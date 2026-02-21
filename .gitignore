@@ -1,0 +1,7 @@
+# Sub-projects have their own git repos
+flashcard-backend/
+flashcard-anki/
+flashcard-web/
+
+# Claude Code
+.claude/
