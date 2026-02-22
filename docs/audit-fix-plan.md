@@ -162,7 +162,7 @@ Session-sized fix plan derived from `docs/audit-findings.md` (33 findings: 3 Cri
 
 ---
 
-## Session 7: Anki — Dead Code & Main Thread Fixes
+## Session 7: Anki — Dead Code & Main Thread Fixes [COMPLETED]
 
 **Scope**: Remove dead code, fix thread safety, clean up resources.
 
@@ -173,20 +173,12 @@ Session-sized fix plan derived from `docs/audit-findings.md` (33 findings: 3 Cri
 | A-I4 | Enhancement processor blocks main thread during downloads | Move TTS/image downloads in the enhance flow to the background thread (ApiWorker). Have the worker return the downloaded bytes, then apply them to notes on the main thread (which only does col access). |
 | A-I6 | TTS preview temp files never deleted | Add cleanup: store temp file paths and delete them in a cleanup method. Register atexit or use QObject.destroyed signal. At minimum, delete the previous temp file before creating a new one. |
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections A-I1, A-I3, A-I4, A-I6. Fix all four findings in the Anki add-on.
-
-A-I1: Remove the dead tts_back_url code path in api/generate_with_assets.py (lines 175-184). Remove tts_back_data field from the CardMedia dataclass. Remove any references to tts_back_data elsewhere.
-
-A-I3: In api/auth.py login(), remove inject_product_source=False. Let the standard client injection add product_source: 'anki_addon' to login requests.
-
-A-I4: In enhance/processor.py, move TTS and image downloads off the main thread. The download_tts() and download_image() calls should happen in the ApiWorker background thread. The main thread callback should only handle mw.col operations (which require main thread access). This may require restructuring the enhance flow to download in the worker and pass results to the main thread callback.
-
-A-I6: In ui/dialogs/review.py _TtsPlayButton._play(), track the current temp file path as an instance variable. Delete the previous temp file before creating a new one. Also register a cleanup in the button's destroyed signal or parent dialog's closeEvent to delete the last temp file.
-
-Run all tests after.
-```
+**Changes made:**
+- **A-I1**: Removed `tts_back_url` from `EnhancedCard` dataclass and parsing in `src/api/enhance.py`; removed `tts_back_data` from `CardMedia` in `src/api/generate_with_assets.py`; removed back TTS download block, simplified `_filter_tts_by_direction()`; removed back TTS play button from `src/ui/dialogs/review.py`; removed all `tts_back_url`/`tts_back_data` references from `tests/helpers.py`, `tests/test_enhance.py`, `tests/test_generate_with_assets.py`
+- **A-I3**: Removed `inject_product_source=False` from login call in `src/api/auth.py`
+- **A-I4**: Created `DownloadedEnhanceMedia` dataclass and `download_enhance_media()` in `src/enhance/media.py`; added `enhance_and_download()` orchestration in `src/enhance/processor.py` (chains enhance + download on background thread); restructured `_apply_tts_at_end()`, `_apply_tts_after_section()`, `_apply_image_to_field()` to accept pre-downloaded bytes instead of URLs+client; updated `apply_enhancements()` to accept `media` dict instead of `client`; updated `src/ui/dialogs/enhance.py` to use `enhance_and_download`; updated `src/hooks.py` to unpack tuple result
+- **A-I6**: Added `_temp_path` tracking, `_cleanup_temp()` method, and `destroyed` signal connection in `_TtsPlayButton`; properly close temp file handle after writing; cleanup on stop and widget destruction
+- Tests: 3 new tests (TestEnhanceAndDownload, TestDownloadEnhanceMedia); updated TestApplyTtsAtEnd and TestSecurityHardening for new signatures; all 192 tests pass, flake8 clean, mypy clean
 
 ---
 
