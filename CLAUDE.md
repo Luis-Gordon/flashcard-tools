@@ -96,7 +96,8 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 - Strict mode, type-only imports, no `any`
 - Zod validation in `src/lib/validation/{domain}.ts` with `.strict()`
 - Routes split by action: `generate.ts`, `enhance.ts` composed by thin `cards.ts` router
-- External API timeouts: Claude 60s, TTS 15s, Unsplash 10s
+- Backend external API timeouts: Claude 60s, TTS 15s, Unsplash 10s
+- Client-side timeouts: generate 60s, enhance 120s, TTS 15s, image 10s
 
 ### Add-on (Python)
 - Python 3.9+ compatible (Anki's bundled version)

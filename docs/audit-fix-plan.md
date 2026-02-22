@@ -140,7 +140,7 @@ Session-sized fix plan derived from `docs/audit-findings.md` (33 findings: 3 Cri
 
 ---
 
-## Session 6: Anki — Security & Reliability
+## Session 6: Anki — Security & Reliability [COMPLETED]
 
 **Scope**: Client-side security fixes and reliability improvements.
 
@@ -151,20 +151,14 @@ Session-sized fix plan derived from `docs/audit-findings.md` (33 findings: 3 Cri
 | A-I7 | image_attribution unescaped in QLabel (Qt XSS) | Apply html.escape() to image_attribution before passing to QLabel in review.py. Match the pattern already used in enhance/processor.py:266 and generate/processor.py:217. |
 | A-I8 | No sync guard — API calls can conflict with Anki sync | Register hooks on sync_will_start and collection_will_temporarily_close in hooks.py. Set a flag that ApiWorker checks before starting. If sync is in progress, queue the operation or show a warning. |
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections A-I2, A-I5, A-I7, A-I8. Fix all four findings in the Anki add-on.
-
-A-I2: In enhance/media.py download_tts(), replace the direct client._session.get() call with client.request(). This ensures TTS downloads get automatic 401 token refresh and 429 retry handling. Match the function signature to work with the client's request method.
-
-A-I5: In api/client.py, cap the retry_after value from 429 responses at 60 seconds maximum. If the server sends a higher value, use 60s and log a warning.
-
-A-I7: In ui/dialogs/review.py, apply html.escape() to image_attribution before passing it to QLabel. Import html at the top of the file. Match the existing pattern in enhance/processor.py:266.
-
-A-I8: In hooks.py, register hooks on gui_hooks.sync_will_start and gui_hooks.sync_did_finish (or collection_will_temporarily_close / collection_did_load). Set a module-level flag _sync_in_progress. Have ApiWorker check this flag before starting work. If sync is active, show an info message to the user: "Please wait until sync completes."
-
-Run all tests after.
-```
+**Changes made:**
+- `src/api/client.py` — Added `download()` method with 401→refresh→retry and 429→sleep(capped)→retry; added `_MAX_RETRY_AFTER = 60` constant; capped `retry_after` in both `request()` 429 handler and `_raise_for_status()`; added proactive token refresh before requests (within 30s of expiry)
+- `src/enhance/media.py` — Simplified `download_tts()` to delegate to `client.download()` (was 30 lines of manual HTTP, now 3 lines)
+- `src/ui/dialogs/review.py` — Added `import html`; escaped `image_attribution` with `html.escape()` before QLabel
+- `src/utils/sync_guard.py` — **Created** sync-in-progress flag module (avoids circular imports)
+- `src/hooks.py` — Registered `sync_will_start` → `set_sync_in_progress(True)` and `sync_did_finish` → `set_sync_in_progress(False)`
+- `src/api/worker.py` — Added sync guard check before executing API calls; emits error signal with user-friendly message if sync in progress
+- Tests: 6 new tests in test_api.py (TestClientDownload), 1 new test (TestRetryAfterCap); all 188 tests pass
 
 ---
 
@@ -196,7 +190,7 @@ Run all tests after.
 
 ---
 
-## Session 8: Anki — Consider Items & Final Cleanup
+## Session 8: Anki — Consider Items & Final Cleanup [COMPLETED]
 
 **Scope**: Evaluate and address remaining Consider items.
 
@@ -216,28 +210,13 @@ Run all tests after.
 - A4 (redundant `or ""`): **Remove**.
 - A5 (TTS filter placement): **Reorder** — move filter before list assignment for readability.
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections A-M1 through A-M5 and the Anki Simplification Appendix (A1-A5). Apply the following changes:
-
-A-M1: Update flashcard-anki/CLAUDE.md code conventions to say: "No Any except for Anki runtime types (mw, Note, Collection, Editor) which lack type stubs. Add '# type: ignore[no-any]' comments on these lines."
-
-A-M2: In api/client.py, before making any request, check if the token is expired or within 30 seconds of expiry (using token_expires_at from config). If so, call _try_refresh() preemptively before the request.
-
-A-M3: In utils/config.py has_stored_auth(), also check token_expires_at. If the token is expired, return False. Import time for the comparison.
-
-A-M5: Update root CLAUDE.md to clarify timeout documentation. Add: "Backend Claude API timeout: 60s. Client timeouts: generate 60s, enhance 120s, TTS 15s, image 10s."
-
-A1: In api/generate_with_assets.py, add a comment at the broad except on enhance_cards: "# Intentionally broad — asset failure must never lose generated cards"
-
-A2: Remove the four unreachable try/except blocks around download_tts() and download_image() calls in generate_with_assets.py. Replace with direct calls.
-
-A4: Remove the redundant `or ""` in generate_with_assets.py line ~210 (inside an already-truthy if block).
-
-A5: In generate_with_assets.py, move the _filter_tts_by_direction() call before the media_list[idx] assignment.
-
-Run all tests after.
-```
+**Changes made:**
+- `flashcard-anki/CLAUDE.md` — Updated Any convention to allow Anki runtime types with `# type: ignore[...]`
+- `src/api/client.py` — Proactive token refresh when within 30s of expiry (before the request loop)
+- `src/utils/config.py` — `has_stored_auth()` now checks `token_expires_at`; returns False if token expired
+- `CLAUDE.md` (root) — Clarified timeout docs: "Backend external API timeouts" vs "Client-side timeouts"
+- `src/api/generate_with_assets.py` — Added comment on intentionally broad except; removed 5 unreachable try/except blocks; removed redundant `or ""`; reordered filter before list assignment
+- Tests: 2 new tests in test_api.py (TestProactiveTokenRefresh), 3 new tests in test_settings.py (has_stored_auth expiry); all 188 tests pass
 
 ---
 
