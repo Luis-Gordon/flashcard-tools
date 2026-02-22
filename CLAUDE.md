@@ -55,7 +55,8 @@ The Anki add-on and web app are the primary API consumers. These contracts are e
 |------|------|-----------------|-----------------|
 | `UNAUTHORIZED` | 401 | Return error | Clear token → login dialog |
 | `USAGE_EXCEEDED` | 402 | Return error + limits | Show upgrade message |
-| `RATE_LIMITED` | 429 | Return `retry_after` | Auto-retry (max 2), then toast |
+| `RATE_LIMITED` | 429 | Return `retry_after` | Auto-retry (max 2, cap 60s), then toast |
+| `CONFLICT` | 409 | Duplicate email signup | Show "account already exists" message |
 | `VALIDATION_ERROR` | 400 | Return field errors | Show user-friendly message |
 | `CONTENT_TOO_LARGE` | 413 | Reject before processing | Show size limit message |
 | `INTERNAL_ERROR` | 500 | Log full trace, return `request_id` only | Show "Something went wrong" + `request_id` |
@@ -101,9 +102,10 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 
 ### Add-on (Python)
 - Python 3.9+ compatible (Anki's bundled version)
-- Type hints on all signatures, no `Any`
-- All HTTP through `src/api/client.py` with transparent token refresh
+- Type hints on all signatures; no `Any` except Anki runtime types (`mw`, `Note`, `Collection`) which lack stubs
+- All HTTP through `src/api/client.py` with transparent token refresh and proactive expiry check
 - Config via `mw.addonManager.getConfig(__name__)`
+- Sync guard: `ApiWorker` checks `sync_guard.is_sync_in_progress()` before executing
 
 ## CRITICAL Constraints
 
