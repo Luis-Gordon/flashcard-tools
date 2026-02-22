@@ -80,14 +80,14 @@ interface User {
   id: string;                           // UUID, from Supabase Auth
   email: string;
   stripe_customer_id: string | null;    // Created on first checkout
-  subscription_tier: string;            // 'free' | 'pro' | 'power'
+  subscription_tier: string;            // 'free' | 'plus' | 'pro'
   subscription_status: string;          // 'active' | 'past_due' | 'canceled' | 'unpaid'
   stripe_subscription_id: string | null;
   stripe_price_id: string | null;
   subscription_period_start: string | null; // ISO8601 — billing period start
   subscription_period_end: string | null;   // ISO8601 — billing period end
-  cards_limit_monthly: number;          // 50 (free), 500 (pro), 2000 (power)
-  overage_rate_cents: number;           // 0 (free), 2 (pro), 2 (power)
+  cards_limit_monthly: number;          // 50 (free), 500 (plus), 2000 (pro)
+  overage_rate_cents: number;           // 0 (free), 2 (plus), 2 (pro)
   free_cards_used: number;              // Legacy — deprecated by subscription-aware usage counting
   free_cards_reset_at: string;          // Legacy — deprecated by subscription_period_start
   created_at: string;
@@ -289,7 +289,7 @@ interface TTSCacheEntry {
 // Response (200)
 {
   request_id: string;
-  tier: 'free' | 'pro' | 'power';
+  tier: 'free' | 'plus' | 'pro';
   status: 'active' | 'past_due' | 'canceled' | 'unpaid';
   period: {
     start: string;               // ISO8601
@@ -299,7 +299,7 @@ interface TTSCacheEntry {
     cards_generated: number;
     cards_limit: number;
     cards_remaining: number;     // max(0, limit - generated)
-    overage_cards: number;       // cards beyond limit (pro/power only)
+    overage_cards: number;       // cards beyond limit (plus/pro only)
     overage_cost_cents: number;
   };
   actions: {
@@ -315,7 +315,7 @@ interface TTSCacheEntry {
 ```typescript
 // Request
 {
-  tier: 'pro' | 'power';
+  tier: 'plus' | 'pro';
   success_url: string;           // Web app URL for redirect after success
   cancel_url: string;            // Web app URL for redirect on cancel
 }
@@ -496,15 +496,17 @@ Returns structured JSON for client-side .apkg generation. Server-side .apkg gene
 
 ### Phase 5b: Billing Integration — CODE COMPLETE
 
-Subscription billing with Stripe: free/pro/power tiers, overage reporting, webhook-driven state sync. Prerequisite for web app launch. Code is complete and tested on staging; SQL migration pending production deploy.
+Subscription billing with Stripe: free/plus/pro tiers, overage reporting, webhook-driven state sync. Prerequisite for web app launch. Code is complete and tested on staging; SQL migration pending production deploy.
 
 **Subscription tiers:**
 
 | Tier | Slug | Price | Cards/month | Overage |
 |------|------|-------|-------------|---------|
 | Free | `free` | €0 | 50 | Blocked (upgrade required) |
-| Pro | `pro` | €9/month | 500 | €0.02/card |
-| Power | `power` | €29/month | 2,000 | €0.015/card |
+| Plus | `plus` | €9/month | 500 | €0.02/card |
+| Pro | `pro` | €29/month | 2,000 | €0.015/card |
+
+> Tiers renamed from pro/power to plus/pro in commit 5093b3d.
 
 Card count = generation actions only. All tiers include generation, enhancement, TTS, and image features.
 
@@ -1181,7 +1183,7 @@ flashcard-web/
 3. Configure Cloudflare Workers deployment (`wrangler.jsonc` with `not_found_handling: "single-page-application"`)
 4. Configure Supabase Auth (shared project with backend)
 5. Landing page: hero section with value proposition, feature highlights, CTA to signup
-6. Pricing page: free tier details, Pro/Power tier cards with pricing, CTA to signup
+6. Pricing page: free tier details, Plus/Pro tier cards with pricing, CTA to signup
 7. Privacy policy page (GDPR-compliant, covering all data processing)
 8. Terms of service page
 9. Pre-render script: marketing pages built as static HTML files with OG meta tags for SEO + social sharing

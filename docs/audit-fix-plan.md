@@ -41,32 +41,36 @@ Session-sized fix plan derived from `docs/audit-findings.md` (33 findings: 3 Cri
 
 ---
 
-## Session 2: Backend Security — Rate Limiting & Usage Integrity
+## Session 2: Backend Security — Rate Limiting & Usage Integrity [COMPLETED]
 
 **Scope**: Durable rate limiting + usage race condition. Changes in `middleware/rateLimit.ts`, `services/usage.ts`, `routes/generate.ts`.
 
 | ID | Finding | Action |
 |----|---------|--------|
-| B-C2 | Rate limiting in-memory only | Migrate to Cloudflare KV. Store bucket state keyed by `{userId}:{routePrefix}`. Set KV TTL to match window duration. Add KV binding to wrangler.jsonc. Keep in-memory fallback for dev (KV not available locally without `--remote`). |
-| B-I2 | PRD rate limits not implemented (hourly/daily caps) | Implement tiered rate limits per PRD: generation 100/hour, all operations 500/day. Store counters in KV with hourly/daily TTLs. Tier-aware: free tier gets lower caps. |
-| B-I5 | TOCTOU race in usage checking | Use Supabase RPC or atomic increment. Check-and-increment in a single database operation. If Supabase doesn't support this natively, use a transaction or advisory lock. Document the chosen approach. |
+| B-C2 | Rate limiting in-memory only | Migrated to Cloudflare KV fixed-window counter. Key: `ratelimit:{userId}:{handler}:{windowId}`. TTL = window duration. In-memory fallback when KV absent. Handler field separates generate/enhance/tts/image counters. |
+| B-I2 | PRD rate limits not implemented (hourly/daily caps) | New `tieredRateLimit.ts` middleware. Free: 20 gen/hr, 100 ops/day. Plus: 100/500. Pro: 200/1000. Tier lookup cached in KV (5min TTL) → in-memory → Supabase. Safe-fail to 'free'. |
+| B-I5 | TOCTOU race in usage checking | Supabase RPC `check_and_reserve_usage` with `SELECT ... FOR UPDATE`. Serializes concurrent requests per user. Reservation pattern: insert → finalize or cancel. |
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections B-C2, B-I2, B-I5. Fix all three findings.
-
-B-C2: Migrate rate limiting from in-memory Map to Cloudflare KV. Add a RATE_LIMIT_KV binding in wrangler.jsonc. Key pattern: ratelimit:{userId}:{handler}:{window}. Set KV TTL to match the rate limit window. Keep in-memory fallback when KV binding is unavailable (local dev).
-
-B-I2: Add tiered hourly and daily rate limits per the PRD. Free: 20 gen/hour, 100 ops/day. Plus: 100 gen/hour, 500 ops/day. Pro: 200 gen/hour, 1000 ops/day. Store cumulative counters in KV with appropriate TTLs.
-
-B-I5: Fix the TOCTOU race in usage checking. The check in canGenerateCards() and the record in recordUsage() must be atomic. Use a Supabase RPC function or transaction to check-and-increment in one operation. If that's not feasible, use optimistic locking with a version column.
-
-Run all tests after.
-```
+**Changes made:**
+- `src/types/index.ts` — `RATE_LIMIT_KV?: KVNamespace` in Env
+- `src/middleware/rateLimit.ts` — token bucket → fixed-window + KV backend + handler field
+- `src/middleware/tieredRateLimit.ts` — **Created** (tier-based hourly/daily caps)
+- `src/services/usage.ts` — `checkAndReserveUsage`, `finalizeReservation`, `cancelReservation`
+- `src/routes/generate.ts` — atomic reservation flow + tiered middleware
+- `src/routes/enhance.ts` — tiered middleware + handler param
+- `src/routes/assets.ts` — tiered middleware + handler params
+- `wrangler.jsonc` — KV namespace bindings in staging/production
+- `supabase/migrations/20260222000001_create_check_and_reserve_usage.sql` — **Created**
+- `test/unit/services/stripe.test.ts` — fixed 2 stale price ID assertions
+- `test/unit/middleware/rateLimit.test.ts` — handler param + 4 new KV tests (11 total)
+- `test/unit/middleware/tieredRateLimit.test.ts` — **Created** (13 tests)
+- `test/unit/services/usage.test.ts` — 11 new RPC function tests (35 total)
+- `test/integration/cards.test.ts` — updated mocks for RPC-based flow
+- Verification: typecheck clean, lint clean, 1244/1244 tests pass (all green)
 
 ---
 
-## Session 3: Backend Contracts — Types, Errors, Documentation
+## Session 3: Backend Contracts — Types, Errors, Documentation [COMPLETED]
 
 **Scope**: Contract alignment between PRD, types, and documentation. Low-risk, high-value for web app.
 
@@ -78,26 +82,21 @@ Run all tests after.
 | B-I6 | Webhook handlers leak internal error details | Sanitize Supabase error messages in billing.ts webhook handlers. Log full errors server-side, return generic messages. Ensure handleInvoicePaymentFailed doesn't log full Stripe metadata objects. |
 | B-M6 | Usage route returns 503 instead of 500 | Change to 500 + INTERNAL_ERROR for consistency with the error contract. |
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections X-1, B-I1, B-I3, B-I6, B-M6. Fix all five findings.
-
-X-1: Update PRD.md subscription tier table from pro/power to plus/pro to match the code. Add a note: "Tiers renamed from pro/power to plus/pro in commit 5093b3d."
-
-B-I1: Update BOTH CLAUDE.md files (root and flashcard-backend/) to document Claude API timeout as 60s, not 30s.
-
-B-I3: Add 'CONFLICT' to the ErrorCode union in types/index.ts. Add a 409 case in errorHandler.ts httpStatusToErrorCode mapping. Update auth.ts signup/login to use the typed ErrorCode instead of string literals.
-
-B-I6: In services/billing.ts, sanitize all error logging in webhook handlers. Log the full error object at debug level. At error level, log only the event type, handler name, and a generic message. Never include raw Supabase or Stripe error messages in logs that could be exposed via log aggregation.
-
-B-M6: In routes/usage.ts, change the catch block from 503 to 500 with INTERNAL_ERROR code for consistency.
-
-Run all tests after.
-```
+**Changes made:**
+- `PRD.md` — Updated 6 references from pro/power to plus/pro; added rename note after tier table
+- `CLAUDE.md` — Updated Claude timeout from 30s to 60s
+- `flashcard-backend/CLAUDE.md` — Updated Claude timeout from 30s to 60s, added 529 backoff note
+- `src/types/index.ts` — Added `'CONFLICT'` to ErrorCode union
+- `src/middleware/errorHandler.ts` — Added `case 409: return 'CONFLICT'` to httpStatusToErrorCode
+- `src/routes/auth.ts` — Added `satisfies ErrorCode` to CONFLICT code fields for type safety
+- `src/routes/usage.ts` — Changed both 503 responses to 500
+- `src/services/billing.ts` — All 6 error handlers now use `console.debug` (dev-only full error) + `console.error` (generic message with identifiers only)
+- `test/unit/services/usage.test.ts` — Updated `console.error` spy to `console.warn` for recordUsage test
+- `test/integration/usage.test.ts` — Updated 503 expectations to 500
 
 ---
 
-## Session 4: Backend Reliability — Billing & External APIs
+## Session 4: Backend Reliability — Billing & External APIs [COMPLETED]
 
 **Scope**: Billing endpoint hardening + external API resilience.
 
@@ -109,26 +108,16 @@ Run all tests after.
 | B-M1 | Claude 529 not distinguished from generic 5xx | Add specific handling for 529: exponential backoff (2s base) instead of immediate retry. Keep immediate retry for other 5xx. |
 | B-M3 | recordUsage fire-and-forget, silent data loss | Add structured warning log when recordUsage fails, including userId, operation type, and timestamp. This enables alerting on usage tracking degradation without blocking requests. |
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections B-M2, B-M4, B-M5, B-M1, B-M3. Fix all five findings.
-
-B-M2: In services/stripe.ts createStripeClient(), add timeout: 25000 and maxNetworkRetries: 1 to the Stripe constructor options.
-
-B-M4: In routes/billing.ts portal endpoint, validate return_url against the ALLOWED_ORIGINS env var (added in Session 1). Reject any URL whose origin doesn't match the allowlist. Fall back to '/' for invalid values.
-
-B-M5: In routes/billing.ts checkout endpoint, validate success_url and cancel_url against ALLOWED_ORIGINS. Update the Zod schema to use .refine() or add validation after parsing. Reject non-matching origins with a clear error.
-
-B-M1: In services/claude.ts retry logic, detect status 529 specifically. For 529: use exponential backoff (wait 2s before retry). For other 5xx: keep the existing immediate retry.
-
-B-M3: In services/usage.ts recordUsage(), upgrade the error logging from console.error to a structured warning that includes: userId, operation type (generate/enhance), and ISO timestamp. This enables monitoring alerts without blocking the request.
-
-Run all tests after.
-```
+**Changes made:**
+- `src/services/stripe.ts` — Added `timeout: 25_000` and `maxNetworkRetries: 1` to Stripe constructor; removed placeholder comment from METER_EVENT_NAME; replaced JSDoc on getPriceIdForTier
+- `src/routes/billing.ts` — Added `parseAllowedOrigins()` and `isAllowedOrigin()` helpers; checkout validates success_url/cancel_url origins; portal validates return_url with fallback to `/`
+- `src/services/claude.ts` — Added `'overloaded'` to AttemptResult union; 529 returns `overloaded` type; retry logic sleeps 2s before retry on overloaded; added `sleep()` helper
+- `src/services/usage.ts` — `recordUsage` error changed from `console.error` to `console.warn` with structured fields including timestamp; `parseSubscriptionTier` warns on unknown non-null values
+- `test/integration/billing.test.ts` — Updated `ALLOWED_ORIGINS` to include test origin `https://app.example.com`
 
 ---
 
-## Session 5: Backend — Remaining Consider Items + Simplification
+## Session 5: Backend — Remaining Consider Items + Simplification [COMPLETED]
 
 **Scope**: Low-risk improvements and code cleanup.
 
@@ -143,24 +132,11 @@ Run all tests after.
 | G2 | No-op `as unknown[]` casts | Remove both casts. |
 | G3 | Spread-conditional for optional response fields | Keep — empty array omission is intentional API behavior. No change. |
 
-**Prompt for Claude Code:**
-```
-Read docs/audit-findings.md sections B-M7, B-M8, and the Simplification Appendix (S1, S3, G1, G2).
-
-B-M7: Expand the /auth/me endpoint response to include subscription_tier, subscription_status, and a usage summary (cards_used, cards_limit for current period). Query the user's subscription and current usage from Supabase. Keep the existing email and id fields.
-
-B-M8: In services/usage.ts parseSubscriptionTier(), add a console.warn() when the raw value doesn't match any known tier before defaulting to 'free'. Include the raw value in the warning.
-
-S1: In services/stripe.ts, remove the "Replace with real meter event_name" comment from METER_EVENT_NAME if memogenesis_overage is the production value.
-
-S3: In services/stripe.ts, add a comment above getPriceIdForTier: "Abstraction point for tier-to-price mapping — keep as named function."
-
-G1: In routes/generate.ts, remove the local DomainConfig interface and import GenerationPromptConfig from lib/prompts/generation/index.ts instead.
-
-G2: In routes/generate.ts, remove the two no-op `as unknown[]` casts (lines ~295 and ~319).
-
-Run all tests after.
-```
+**Changes made:**
+- `src/routes/auth.ts` — Expanded /auth/me to include subscription_tier, subscription_status, cards_used, cards_limit via `getUserUsageStatus()` with graceful degradation
+- `src/routes/generate.ts` — Removed duplicate `DomainConfig` interface; imported `GenerationPromptConfig` from generation registry; removed `as GenerationPromptConfig` cast; removed `as unknown[]` no-op cast
+- B-M8, S1, S3 changes are documented in Session 4 (combined into single implementation session)
+- Verification: typecheck clean, lint clean, 149 tests pass across 8 test files (unit + integration)
 
 ---
 
