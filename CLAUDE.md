@@ -145,6 +145,8 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 | Backend architecture | `flashcard-backend/docs/architecture.md` | Living system state |
 | Anki architecture | `flashcard-anki/docs/architecture.md` | Living system state |
 | Session logs | `{project}/docs/session-log.md` | Append-only history |
+| Product Backlog | PRD.md § Product Backlog | Open design questions + planned features |
+| Project backlogs | `{project}/docs/backlog.md` | Per-project task tracking |
 
 **Rule**: If PRD and CLAUDE.md conflict, PRD wins.
 

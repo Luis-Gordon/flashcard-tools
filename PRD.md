@@ -1507,6 +1507,28 @@ npm run test             # Vitest
 
 ---
 
+# Product Backlog
+
+## Open Design Questions
+
+- **Card count vs max_cards**: Generation often returns fewer cards than max_cards. This is likely quality gates (confidence scoring, unsuitable content filtering) correctly rejecting weak cards. Need to: (a) verify by inspecting rejected/unsuitable arrays across diverse inputs, (b) decide whether to surface rejection reasons to users ("8 of 10 cards passed quality checks" vs silently returning fewer), (c) set user expectations ("up to N cards" not "N cards").
+
+- **Difficulty dropdown effectiveness**: Does the beginner/intermediate/advanced parameter produce meaningfully different output? Test: generate cards from identical input at all three levels. If differences aren't clearly articulable, either make the behavioral contract explicit in domain prompts or remove the parameter. Currently affects all clients.
+
+- **Granularity philosophy per domain**: Should every keyword in a paragraph become a card, or should only the core concept being described become a card (using the text as source for the definition)? Answer varies by domain — LANG should be high granularity (one card per vocab item), GENERAL/MED should be concept-level (one card per idea, text becomes back content). This needs to be explicitly encoded in each domain's generation prompt rather than left implicit.
+
+## Planned Features (priority order)
+
+1. **Rejection visibility** — Surface rejected cards and unsuitable content reasons in client UIs so users understand why card count < max_cards. No API change needed (data already in response), clients need to display it. Affects: Anki add-on, web app (Phase 2).
+
+2. **User guidance / steering field** — Optional `user_guidance: string` field on POST /cards/generate. Passed as additional steering context to the prompt ("Focus on differential diagnosis" or "Only N2-level vocabulary"). Lightweight backend change (add to Zod schema, inject into prompt), high leverage for perceived quality. Affects: API contract, all clients.
+
+3. **Duplicate detection against existing cards** — Before generation, client sends existing card fronts (or hashes) from the target deck as context. Prompt skips concepts already covered. Increases token usage but prevents the highest-trust-destroying outcome: paying for cards you already have. Two implementation paths: (a) client sends existing cards in request body (new field), (b) server-side if cards table exists (web app can query, Anki add-on sends from local DB). Affects: API contract, Anki add-on, web app.
+
+4. **Target keywords / topics / goals** — Richer steering beyond free-text guidance. Structured fields: `target_keywords: string[]`, `learning_goals: string`, `exclude_topics: string[]`. Lower priority than free-text guidance — build that first, see if structured input adds value. Affects: API contract, all clients.
+
+---
+
 # Cross-Product Considerations
 
 ## Ecosystem Architecture
