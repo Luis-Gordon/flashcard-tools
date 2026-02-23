@@ -6,7 +6,7 @@ AI-powered flashcard generation and enhancement ecosystem: serverless API + Anki
 flashcard-tools/
 ├── flashcard-backend/   # Cloudflare Workers API (Hono, TypeScript)
 ├── flashcard-anki/      # Anki desktop add-on (Python, PyQt6)
-└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — not yet started
+└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — Phase 1 complete
 ```
 
 Each sub-project has its own CLAUDE.md, architecture doc, and session log. The PRD is consolidated at the repo root (`PRD.md`). **Always read the sub-project CLAUDE.md before working in that directory.**
@@ -141,7 +141,7 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 | Backend CLAUDE.md | `flashcard-backend/CLAUDE.md` | Full backend dev guide |
 | Anki CLAUDE.md | `flashcard-anki/CLAUDE.md` | Full add-on dev guide |
 | PRD | `PRD.md` (repo root) | Full ecosystem requirements (all 4 PRDs) |
-| Web App CLAUDE.md | `flashcard-web/CLAUDE.md` | Full web app dev guide (not yet created) |
+| Web App CLAUDE.md | `flashcard-web/CLAUDE.md` | Full web app dev guide |
 | Backend architecture | `flashcard-backend/docs/architecture.md` | Living system state |
 | Anki architecture | `flashcard-anki/docs/architecture.md` | Living system state |
 | Session logs | `{project}/docs/session-log.md` | Append-only history |
