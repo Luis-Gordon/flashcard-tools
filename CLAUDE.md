@@ -75,7 +75,7 @@ Full endpoint list in each sub-project's CLAUDE.md. Key routes: `/auth/*`, `/car
 - **Backend is stateless** — all state in Supabase + R2, Workers handle no persistent connections
 - **Add-on never blocks main thread** — all API calls via QThread workers
 - **Prompts are versioned** — `src/lib/prompts/{generation,enhancement}/{name}-v{semver}.ts`, never edit in-place
-- **Hook-based prompt architecture** — all 10 domains use hooks for both generation and enhancement; master base + domain hook + optional sub-hook (LANG: JA, CEFR default)
+- **Hook-based prompt architecture** — all 10 domains use hooks for both generation and enhancement; master base + domain hook + optional sub-hook (LANG: JA, ZH, KO, RU, AR, CEFR default)
 - **Enhancements are additive** — original card content is always preserved
 - **Undo is mandatory** — `mw.checkpoint()` before any card modifications
 
