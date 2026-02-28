@@ -2,7 +2,7 @@
 
 This document contains four PRDs for a suite of AI-powered flashcard tools sharing a common backend. Build in sequence: Backend → Anki Add-on → Browser Extension → Android App.
 
-> **Current Status (2026-02-28)**: Backend Phases 1–7b complete (all 10 domains, 13 sub-hooks, billing, cards table, GDPR endpoints). Anki Add-on Phases 1–6 + 7c complete, 7d not started. Web App Phases 1–3 + 4a (export) complete, staging deployed. Next: Web App Phase 4b (billing integration).
+> **Current Status (2026-02-28)**: Backend Phases 1–4 complete. Phase 5b (Billing) deployed to production. Phase 7a–7b (Structured HTML + Furigana) complete across all 10 domains. All Priority 1–3 sub-hooks complete (13 sub-hooks across 5 domains). Cards table deployed to production with library endpoints (GET/PATCH/DELETE). GDPR account endpoints (DELETE /account, GET /account/export) complete. Anki Add-on Phases 1–6 complete. Phase 7c complete, 7d not started. Audit hardened (14 findings resolved across 8 sessions). Web App Phases 1–3 complete (auth, generation, library, export, keyboard shortcuts); staging deployed. Next: Phase 4 billing integration (blocked on Phase 5b production deploy).
 
 ---
 
@@ -392,6 +392,78 @@ Global DDoS protection is handled at the Cloudflare edge layer, not in applicati
 | `RATE_LIMITED` | 429 | Show toast, auto-retry after `retry_after` (max 2 retries) |
 | `INTERNAL_ERROR` | 500 | Show "Something went wrong" toast, log `request_id` |
 
+## Project Structure
+
+```
+flashcard-backend/
+├── docs/
+│   ├── session-log.md
+│   ├── architecture.md
+│   ├── billing-spec.md         # Full billing implementation spec
+│   └── spikes/
+│       └── apkg-workers.md
+├── src/
+│   ├── index.ts
+│   ├── routes/
+│   │   ├── auth.ts
+│   │   ├── cards.ts            # Thin router composing generate, enhance, library
+│   │   ├── generate.ts         # POST /cards/generate
+│   │   ├── enhance.ts          # POST /cards/enhance
+│   │   ├── library.ts          # GET/PATCH/DELETE /cards
+│   │   ├── account.ts          # DELETE /account, GET /account/export
+│   │   ├── assets.ts           # TTS + image endpoints
+│   │   ├── billing.ts          # Checkout, portal, webhook endpoints
+│   │   ├── usage.ts            # /usage/current endpoint
+│   │   └── health.ts
+│   ├── middleware/
+│   │   ├── auth.ts
+│   │   ├── rateLimit.ts
+│   │   ├── tieredRateLimit.ts  # Tier-based hourly/daily caps
+│   │   ├── contentSize.ts
+│   │   ├── requestId.ts
+│   │   └── errorHandler.ts     # Global error handler
+│   ├── services/
+│   │   ├── claude.ts
+│   │   ├── tts.ts
+│   │   ├── unsplash.ts
+│   │   ├── stripe.ts               # Stripe client, checkout/portal session creation
+│   │   ├── billing.ts              # Webhook event handlers, tier mapping
+│   │   ├── imageQueryExtractor.ts   # Fallback image query from card.front
+│   │   ├── enhancementProcessor.ts  # Claude output → API response mapping
+│   │   ├── cardValidator.ts         # Per-domain post-processing validation
+│   │   └── usage.ts                 # Subscription-aware usage tracking (service, not middleware)
+│   ├── lib/
+│   │   ├── supabase.ts
+│   │   ├── htmlUtils.ts        # HTML stripping, TTS content extraction
+│   │   ├── validation/
+│   │   │   ├── cards.ts        # Generate schemas + domain taxonomy
+│   │   │   ├── enhance.ts      # Enhance schemas
+│   │   │   ├── auth.ts
+│   │   │   ├── assets.ts
+│   │   │   ├── account.ts      # GDPR endpoint schemas
+│   │   │   └── billing.ts      # Checkout + webhook Zod schemas
+│   │   └── prompts/
+│   │       ├── generation/     # Domain generation configs + registry (index.ts)
+│   │       ├── enhancement/    # Domain enhancement configs + registry (index.ts)
+│   │       └── hooks/          # Hook-based prompt architecture
+│   │           ├── master-base.ts          # Universal SRS generation rules
+│   │           ├── master-enhance-base.ts  # Universal enhancement rules
+│   │           ├── hook-registry.ts        # Generation hook registry
+│   │           ├── enhance-hook-registry.ts # Enhancement hook registry
+│   │           └── {domain}/              # Per-domain hooks + sub-hooks
+│   └── types/
+│       ├── index.ts
+│       └── database.ts
+├── test/
+│   ├── fixtures/
+│   ├── unit/                   # ~52 files, Node pool
+│   └── integration/            # ~9 files, Workers pool
+├── wrangler.jsonc
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts            # projects[] array: unit (Node) + integration (Workers)
+```
+
 ## Boundaries
 
 ### ✅ Always
@@ -430,15 +502,21 @@ Claude API service with retry/timeout, prompt templates for all 10 domains with 
 
 ### Phase 4: Asset Generation — ✅ COMPLETE
 
-OpenAI TTS service with R2 caching (SHA256 key), `/assets/tts` + `/assets/tts/:cacheKey` endpoints, Unsplash image search with attribution, TTS/images integrated into `/cards/enhance` flow (parallel processing), `image_search_query` in all enhancement prompts.
+OpenAI TTS service with R2 caching (SHA256 key), `/assets/tts` + `/assets/tts/:cacheKey` endpoints, Unsplash image search with attribution, TTS/images integrated into `/cards/enhance` flow (parallel processing), `image_search_query` field added to all 11 enhancement prompts (LLM generates 3-8 word English stock photo queries instead of literal translations from card.front).
+
+**Test coverage**: ~1,681 tests across 61 files (unit: Node pool, integration: Workers pool).
 
 ### Phase 5a: Card Export Endpoint — POSTPONED
 
-Postponed until browser extension/Android app need it. Anki add-on uses direct note insertion. Returns structured JSON for client-side .apkg generation (server-side not viable in Workers).
+> Postponed until before browser extension/Android app. Anki add-on uses direct note insertion, so it doesn't need this endpoint.
+
+Returns structured JSON for client-side .apkg generation. Server-side .apkg generation is not viable in Cloudflare Workers (sql.js WASM incompatibility).
 
 ### Phase 5b: Billing Integration — ✅ COMPLETE
 
-Subscription billing with Stripe: free/plus/pro tiers, overage reporting, webhook-driven state sync. All migrations applied to production.
+Subscription billing with Stripe: free/plus/pro tiers, overage reporting, webhook-driven state sync. Prerequisite for web app launch. All migrations applied to production.
+
+**Subscription tiers:**
 
 | Tier | Slug | Price | Cards/month | Overage |
 |------|------|-------|-------------|---------|
@@ -446,24 +524,75 @@ Subscription billing with Stripe: free/plus/pro tiers, overage reporting, webhoo
 | Plus | `plus` | €9/month | 500 | €0.02/card |
 | Pro | `pro` | €29/month | 2,000 | €0.015/card |
 
-Card count = generation actions only. All tiers include generation, enhancement, TTS, and image features. See `docs/billing-spec.md` for full implementation spec.
+> Tiers renamed from pro/power to plus/pro in commit 5093b3d.
 
-### Phase 6: Card Library & Account Management — ✅ COMPLETE
+Card count = generation actions only. All tiers include generation, enhancement, TTS, and image features.
 
-Card persistence and CRUD endpoints for the web app, plus GDPR account lifecycle. All deployed to production.
+**New files:** `src/routes/billing.ts`, `src/routes/usage.ts`, `src/services/stripe.ts`, `src/services/billing.ts`, `src/lib/validation/billing.ts`
 
-- [x] `cards` table migration with RLS, indexes, updated_at trigger
+**Modified files:** `src/types/index.ts` (Stripe env vars, SubscriptionTier), `src/types/database.ts` (subscription columns), `src/services/usage.ts` (subscription-aware), `src/index.ts` (mount routes)
+
+**Full implementation spec:** `@docs/billing-spec.md`. Endpoint contracts at `/usage/current`, `/billing/checkout`, `/billing/portal`, `/billing/webhook` — see "Key Endpoint Contracts" above.
+
+### Phase 7: CSS Styling & Furigana — 7a+7b COMPLETE, 7c+7d see PRD 2
+
+Structured HTML output with `fc-*` CSS classes across all 10 domains. Furigana in LANG domain. Backend work complete (7a+7b). Anki add-on CSS injection complete (7c), note type templates not started (7d). See PRD 2 Phase 7 for full status.
+
+### Cards Table & Library Endpoints — ✅ COMPLETE
+
+Web App Phase 2 backend prerequisites, all deployed to production:
+
+- [x] `cards` table migration (with RLS, indexes, updated_at trigger)
 - [x] `waitUntil()` card persistence in POST /cards/generate
 - [x] GET /cards — paginated library with domain/search/sort filters
 - [x] PATCH /cards/:id — update card fields
 - [x] DELETE /cards/:id — soft delete single card
 - [x] DELETE /cards (bulk) — soft delete up to 100 cards
-- [x] DELETE /account — GDPR account deletion, cascades all data
-- [x] GET /account/export — GDPR data export (full JSON)
 
-### Phase 7: CSS Styling & Furigana — 7a+7b COMPLETE, 7c+7d see PRD 2
+### GDPR Account Endpoints — ✅ COMPLETE
 
-Structured HTML output with `fc-*` CSS classes across all 10 domains. Furigana in LANG domain. Backend work complete (7a+7b). See PRD 2 Phase 7 for add-on status.
+- [x] DELETE /account — cascades all data, best-effort Stripe cleanup
+- [x] GET /account/export — full JSON export of all user data
+
+## Commands
+
+```bash
+npm install                        # Install dependencies
+npm run dev                        # wrangler dev --local
+npm run test                       # vitest (unit + integration)
+npm run test:unit                  # unit tests only (Node pool)
+npm run test:integration           # integration tests only (Workers pool)
+npm run test:coverage              # vitest --coverage
+npm run typecheck                  # tsc --noEmit
+npm run lint                       # eslint src/
+npm run lint:fix                   # eslint src/ --fix
+npm run deploy:staging             # wrangler deploy --env staging
+npm run deploy:production          # wrangler deploy --env production
+```
+
+## Environment Configuration
+
+| Setting | Staging | Production |
+|---------|---------|------------|
+| Rate limits | Disabled | Enforced (10 req/min) |
+| Free tier | Bypassed for test accounts | Enforced (50 cards/month) |
+| Log level | `debug` | `info` |
+| Stripe mode | Test | Live |
+| Stripe webhook secret | Test secret | Production secret |
+| Error alerting | Disabled | Enabled (1% threshold) |
+
+**Environment variables (secrets set via `wrangler secret put`):**
+
+| Variable | Purpose |
+|----------|---------|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role (webhook handler) |
+| `ANTHROPIC_API_KEY` | Claude API |
+| `OPENAI_API_KEY` | TTS API |
+| `UNSPLASH_ACCESS_KEY` | Image search |
+| `STRIPE_SECRET_KEY` | Stripe API calls |
+| `STRIPE_WEBHOOK_SECRET` | Webhook signature verification |
 
 ---
 
@@ -524,6 +653,65 @@ The add-on consumes these backend endpoints:
 
 All API calls include `product_source: 'anki_addon'`.
 
+## Project Structure
+
+```
+flashcard-anki/
+├── __init__.py              # Anki add-on entry point
+├── config.json              # Default configuration
+├── config.md                # Configuration documentation
+├── pyproject.toml           # Python project config (linting, mypy settings)
+├── conftest.py              # Root pytest config (path setup)
+├── src/
+│   ├── api/
+│   │   ├── client.py        # HTTP client wrapper
+│   │   ├── auth.py          # Authentication handling
+│   │   ├── cards.py         # Card generation API
+│   │   ├── endpoints.py     # Endpoint definitions
+│   │   ├── enhance.py       # Card enhancement API
+│   │   ├── generate_with_assets.py  # Generate + TTS/image orchestration
+│   │   └── worker.py        # QThread background worker
+│   ├── ui/
+│   │   ├── constants.py     # Shared option lists (domains, styles, etc.)
+│   │   └── dialogs/
+│   │       ├── helpers.py   # Shared dialog utilities
+│   │       ├── login.py     # Login dialog
+│   │       ├── generate.py  # Card generation dialog
+│   │       ├── review.py    # Card review/edit dialog
+│   │       ├── enhance.py   # Enhancement options dialog
+│   │       ├── settings.py  # Settings dialog
+│   │       └── styles.py    # Card styles dialog
+│   ├── generate/
+│   │   └── processor.py     # Generation orchestration & note creation
+│   ├── enhance/
+│   │   ├── processor.py     # Enhancement orchestration
+│   │   └── media.py         # Media file handling (TTS/images)
+│   ├── styles/
+│   │   └── stylesheet.py    # CSS stylesheet injection
+│   ├── hooks.py             # Anki hook registrations
+│   └── utils/
+│       ├── config.py        # Configuration management
+│       ├── logging.py       # Logging utilities
+│       └── sync_guard.py    # Sync-in-progress flag (prevents API during sync)
+├── tests/
+│   ├── conftest.py
+│   ├── helpers.py           # Test factories
+│   ├── test_api.py
+│   ├── test_enhance.py
+│   ├── test_generate.py
+│   ├── test_generate_processor.py
+│   ├── test_generate_with_assets.py
+│   ├── test_helpers.py
+│   ├── test_media.py
+│   ├── test_settings.py
+│   └── test_styles.py
+├── tools/
+│   └── package.py           # Build script for .ankiaddon
+└── docs/
+    ├── architecture.md
+    └── session-log.md
+```
+
 ## Boundaries
 
 ### ✅ Always
@@ -548,58 +736,131 @@ All API calls include `product_source: 'anki_addon'`.
 
 ### Phase 1: Project Setup & Auth — ✅ COMPLETE
 
-- [x] Add-on structure, configuration management, .ankiaddon packaging
-- [x] Login dialog with email/password, token storage and refresh
+- [x] Add-on structure following Anki conventions
+- [x] Configuration management (`src/utils/config.py`)
+- [x] Login dialog with email/password
+- [x] Token storage (in Anki config, plain-text JSON)
+- [x] Token refresh logic
 - [x] Menu items for login/logout
+- [x] Installation via .ankiaddon file
 
 ### Phase 2: Card Generation UI — ✅ COMPLETE
 
+- [x] "Generate Cards" in Tools menu
 - [x] Generation dialog with text input, domain selector (10 domains), card style, difficulty, max cards
-- [x] Review dialog: editable card list with front, back, tags, notes; delete individual cards
-- [x] Language hook selector (visible when domain="lang")
-- [x] Usage counter display, API error handling
+- [x] Call `POST /cards/generate` with `product_source: 'anki_addon'` and `domain`
+- [x] Review dialog: editable card list with front, back, tags, notes per card
+- [x] Delete individual cards from review list
+- [x] Domain selector widget with all 10 domains
+- [x] Usage counter display
+- [x] API error handling (timeout, rate limit, usage exceeded)
+- [x] Language hook selector (visible when domain="lang") — ja/default `hook_key`
 
 ### Phase 3: Card Creation in Anki — ✅ COMPLETE
 
-- [x] Deck selector, note type mapping (Basic/Cloze), tag application
-- [x] Batch creation with undo support (`mw.checkpoint`)
+- [x] Deck selector (existing decks only)
+- [x] Note type mapping (Basic → front/back, Cloze → text/extra)
+- [x] Apply tags from generated cards
+- [x] Batch creation (synchronous, fast local DB writes)
+- [x] Undo support via `mw.checkpoint("Generate Cards")`
+- [x] Results summary ("Created 8 cards in deck 'Biology'")
 - [x] Mixed card type handling (basic + cloze)
 
 ### Phase 4: Browser Integration & Enhancement — ✅ COMPLETE
 
-- [x] "Enhance with AI" in browser context menu (Ctrl+Shift+E)
+- [x] "Enhance with AI" in browser context menu
 - [x] Enhancement options dialog (context, tags, formatting, TTS, images)
-- [x] Domain selector, apply enhancements with undo, partial failure handling
+- [x] Domain selector for enhancement requests
+- [x] Card selection handling from browser
+- [x] Keyboard shortcut (Ctrl+Shift+E)
+- [x] Call `POST /cards/enhance` with selected cards and domain
+- [x] Apply enhancements: merge tags, append notes, handle `skipped_enhancements`
+- [x] Undo support via `mw.checkpoint("Enhance Cards")`
+- [x] Handle partial failure (`failed_cards` in response)
 
 ### Phase 5: TTS & Image Handling — ✅ COMPLETE
 
-- [x] Download TTS audio and images, save via `col.media.write_data()`
-- [x] Per-section TTS placement (front, answer, example), direction filtering
-- [x] Two-layer media dedup, background thread downloads, generate-with-assets pipeline
+- [x] Download TTS audio from `/assets/tts/:cacheKey` (authenticated)
+- [x] Download images from Unsplash URLs (direct, no auth)
+- [x] Save media via `col.media.write_data()` with content-hash filenames
+- [x] Per-section TTS via `<audio controls>`: front TTS at end of front, answer TTS after `fc-meaning`, example TTS after `fc-example`
+- [x] TTS direction filtering: `direction::recognition`/`direction::production` tags determine which side gets TTS (lang domain)
+- [x] Add `<img>` + escaped attribution to back field for images
+- [x] Two-layer dedup: field HTML check + `col.media.have()` check
+- [x] All download failures return None silently (cards still get text enhancements)
+- [x] Media downloads on background thread (`enhance_and_download()` orchestration); only `save_media_file()` + `col.update_note()` on main thread
+- [x] Generate-with-assets pipeline: generate → enhance (asset-only) → download, with TTS preview in review dialog
+
+**Test coverage**: Run `pytest tests/ -v` for current count.
 
 ### Phase 6: Settings & Polish — ✅ COMPLETE
 
-- [x] Settings dialog (generation defaults, enhancement defaults, API URL)
-- [x] Security hardening (`html.escape`), batch size guard (50 cards max)
-- [x] Package builder (`tools/package.py`)
+- [x] Settings dialog with 3 sections (generation defaults, enhancement defaults, API URL)
+- [x] 7 validated config setters with `get_defaults()`
+- [x] "Settings..." menu item in Tools menu (works without login)
+- [x] Security hardening: `html.escape()` for `context_notes` and `image_attribution`
+- [x] Batch size guard: truncate to 50 cards if >50 passed
+- [x] Package builder (`tools/package.py` → `dist/flashcard-tools.ankiaddon`)
 
-**Deferred**: Standalone usage widget, "Enhance on Review" feature.
+**Not implemented (deferred)**:
+- Standalone usage display widget (generation review dialog shows free remaining from generate response; standalone `/usage/current` widget not built)
+- "Enhance on Review" feature (config flag `auto_enhance_on_review` exists, not wired up)
+
+**Test coverage**: Run `pytest tests/ -v` for current count.
 
 ### Post-Phase 6: Audit Hardening — ✅ COMPLETE
 
-14 audit findings resolved across Sessions 13–24: sync guard, proactive token refresh, retry_after cap, failed cards handling, generate-with-assets pipeline, card_type in enhance payloads, dead code removal, HTML escaping.
+Implemented across Sessions 13–24, resolving 14 audit findings:
+
+- [x] Sync guard (`sync_guard.py`) — prevents API calls during Anki sync via `sync_will_start`/`sync_did_finish` hooks + `ApiWorker` check
+- [x] Proactive token refresh — checks token expiry 30s before request, refreshes preemptively
+- [x] `retry_after` cap — `_MAX_RETRY_AFTER = 60` prevents server-controlled indefinite sleep
+- [x] Failed cards handling — `FailedCard` dataclass, tooltip shows failed card IDs + reasons
+- [x] Structural refactor — `ui/constants.py` (shared domain/style/difficulty constants), `ui/dialogs/helpers.py` (shared dialog utilities)
+- [x] Generate-with-assets pipeline — generate → enhance (asset-only) → download on background thread, TTS preview in review dialog
+- [x] `card_type` in enhance payloads — backend uses this to skip front TTS for cloze cards
+- [x] Dead code removal, main-thread download fix, temp file cleanup (`destroyed` signal)
+- [x] HTML escaping for context notes and image attribution
 
 ### Phase 7: CSS Styling & Furigana — 7a+7b+7c COMPLETE, 7d NOT STARTED
 
-Structured `fc-*` CSS output and Japanese furigana support. See root `CLAUDE.md` "Structured HTML Output Contract".
+Structured, visually polished card output with `fc-*` CSS classes and Japanese furigana support. Touches both the backend (prompt output formatting) and the Anki add-on (CSS injection and note type handling). See root `CLAUDE.md` "Structured HTML Output Contract" for the class reference.
 
-- **7a. Structured HTML output** — ✅ COMPLETE. All 10 domains output `fc-*` HTML.
-- **7b. Furigana in LANG domain** — ✅ COMPLETE. Per-kanji `<ruby>` annotations.
-- **7c. CSS stylesheet injection** — ✅ COMPLETE. Idempotent injection/removal, styles dialog, auto-prompt.
-- **7d. Note type template support** — NOT STARTED. Optional: "Flashcard Tools" note type with pre-configured templates.
+- **7a. Structured HTML output in prompts** — ✅ COMPLETE. All 10 domain generation and enhancement prompts output `fc-*` HTML (v1.3.0 generation, v2.0.0 hooks).
+- **7b. Furigana in LANG domain** — ✅ COMPLETE. Per-kanji `<ruby>` annotations in generation and enhancement prompts.
+- **7c. CSS stylesheet injection** — ✅ COMPLETE. `src/styles/stylesheet.py` with `FC_STYLESHEET`, idempotent injection/removal, styles dialog, auto-prompt after generate/enhance.
+- **7d. Note type template support** — NOT STARTED. Optional: create a "Flashcard Tools" note type with pre-configured front/back templates.
 
-**Remaining acceptance criteria:**
-- [ ] Cards render correctly on AnkiDroid and AnkiMobile (untested on mobile)
+#### Acceptance Criteria
+
+- [x] Generated LANG cards display furigana above kanji in Anki reviewer
+- [x] Enhanced cards have structured sections with semantic CSS classes
+- [x] Default CSS stylesheet injected into Anki collection
+- [x] Cards are visually structured with clear section headings
+- [x] Example sentences visually distinct from definitions
+- [x] Tags displayed as styled badges
+- [ ] Cards render correctly on desktop Anki, AnkiDroid, and AnkiMobile (untested on mobile)
+- [x] Existing (pre-Phase 7) cards continue to display correctly
+- [x] Users can customize styles via Anki's template editor
+
+## Commands
+
+```bash
+# Testing
+pytest tests/ -v
+pytest tests/ --cov=src --cov-report=html
+
+# Linting
+flake8 src/
+mypy src/
+
+# Packaging
+python tools/package.py  # Outputs: dist/flashcard-tools.ankiaddon
+
+# Install for development (symlink to Anki addons folder)
+# Windows: mklink /J "%APPDATA%\Anki2\addons21\flashcard-anki" flashcard-anki
+# macOS:   ln -s $(pwd)/flashcard-anki ~/Library/Application\ Support/Anki2/addons21/flashcard-anki
+```
 
 ---
 
@@ -707,26 +968,224 @@ Billing requires a URL. Users need somewhere to sign up, subscribe, and manage t
 
 ### Data Models
 
-**`cards` table** — persisted in Supabase with RLS (users access own cards only):
+**New `cards` table in Supabase:**
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | uuid PK | Auto-generated |
-| `user_id` | uuid FK | References auth.users, CASCADE delete |
-| `generation_request_id` | text | Stores request_id string |
-| `front`, `back` | text | Card content (HTML with `fc-*` classes) |
-| `card_type` | text | `'basic'` or `'cloze'` |
-| `tags` | text[] | Array of tag strings |
-| `notes`, `source_quote` | text | Context and attribution |
-| `domain` | text | Domain slug |
-| `metadata` | jsonb | Domain-specific metadata |
-| `confidence_scores` | jsonb | `{ atomicity, self_contained }` |
-| `is_deleted` | boolean | Soft delete for undo |
-| `created_at`, `updated_at` | timestamptz | Auto-managed |
+```sql
+CREATE TABLE cards (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  generation_request_id text NOT NULL,        -- Stores request_id string (not FK)
+  front text NOT NULL,
+  back text NOT NULL,
+  card_type text NOT NULL CHECK (card_type IN ('basic', 'cloze')),
+  tags text[] NOT NULL DEFAULT '{}',
+  notes text NOT NULL DEFAULT '',
+  source_quote text NOT NULL DEFAULT '',
+  domain text NOT NULL,
+  metadata jsonb NOT NULL DEFAULT '{}',     -- Domain-specific metadata (lang_metadata, etc.)
+  confidence_scores jsonb NOT NULL DEFAULT '{}', -- { atomicity, self_contained }
+  is_deleted boolean NOT NULL DEFAULT false, -- Soft delete for undo support
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 
-Indexes: `(user_id, created_at DESC)`, `(user_id, domain) WHERE NOT is_deleted`, `(generation_request_id)`.
+-- RLS: users can only access their own cards
+ALTER TABLE cards ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "cards_select_own" ON cards FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "cards_update_own" ON cards FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "cards_delete_own" ON cards FOR DELETE USING (auth.uid() = user_id);
+CREATE POLICY "cards_insert_own" ON cards FOR INSERT WITH CHECK (auth.uid() = user_id);
 
-**Client-side state**: 3 Zustand stores — `cards` (generation + library + export transfer), `auth` (Supabase session), `settings` (persisted preferences via `persist` middleware). See `src/stores/` for implementations.
+-- Indexes
+CREATE INDEX idx_cards_user_created ON cards (user_id, created_at DESC);
+CREATE INDEX idx_cards_user_domain ON cards (user_id, domain) WHERE NOT is_deleted;
+CREATE INDEX idx_cards_generation_request ON cards (generation_request_id);
+```
+
+**Client-side state (3 Zustand stores):**
+
+```typescript
+// stores/cards.ts — Generation + library + export transfer
+interface CardState {
+  // Generation state
+  pendingCards: Card[];
+  rejectedCards: RejectedCard[];
+  unsuitableContent: UnsuitableContent[];
+  isGenerating: boolean;
+  generateError: string | null;
+  lastGenerateResponse: GenerateResponse | null;
+  selectedCardIds: Set<string>;
+
+  // Library state — fetched from server
+  libraryCards: LibraryCard[];
+  libraryPagination: { page: number; limit: number; total: number; total_pages: number };
+  isLoadingLibrary: boolean;
+  librarySelectedIds: Set<string>;
+
+  // Export transfer — cards passed from Generate/Library to Export page
+  exportCards: (LibraryCard | Card)[];
+
+  // Actions (generation)
+  generateCards: (params: { content, domain, cardStyle, difficulty, maxCards, hookKey? }) => Promise<void>;
+  clearPendingCards: () => void;
+  removePendingCard: (id: string) => void;
+  updatePendingCard: (id: string, updates: Partial<Pick<Card, 'front' | 'back' | 'tags' | 'notes'>>) => void;
+
+  // Actions (library)
+  fetchLibrary: (filters?: CardFilters) => Promise<void>;
+  deleteLibraryCard: (id: string) => Promise<void>;
+  updateLibraryCard: (id: string, updates: UpdateCardRequest) => Promise<LibraryCard>;
+  bulkDeleteLibraryCards: (ids: string[]) => Promise<void>;
+  removeLibraryCardLocally: (id: string) => { card: LibraryCard; index: number } | null;
+  restoreLibraryCard: (card: LibraryCard, index: number) => void;
+
+  // Actions (selection + export transfer)
+  toggleCardSelection / selectAll / deselectAll (both pending and library);
+  setExportCards: (cards: (LibraryCard | Card)[]) => void;
+  clearExportCards: () => void;
+}
+
+// stores/auth.ts — Supabase Auth session management
+interface AuthState {
+  session: Session | null;
+  user: User | null;
+  isLoading: boolean;
+  initialize: () => Promise<void>;
+  signIn / signUp / signOut;
+}
+
+// stores/settings.ts — Persisted user preferences (Zustand persist → localStorage)
+interface SettingsState {
+  libraryViewMode: 'grid' | 'list';
+  recentDeckNames: string[];     // Max 5, MRU order
+  setLibraryViewMode / addRecentDeckName;
+}
+```
+
+**Card types:**
+
+```typescript
+// Card — generation response (no domain field, client-assigned ID)
+interface Card {
+  id: string;                   // crypto.randomUUID() — backend doesn't return persisted IDs
+  front: string;
+  back: string;
+  card_type: 'basic' | 'cloze';
+  tags: string[];
+  notes: string;
+  source_quote: string;
+  confidence_scores: { atomicity: number; self_contained: number };
+  [key: string]: unknown;       // Domain-specific metadata (lang_metadata, etc.)
+}
+
+// LibraryCard — persisted card from database (has domain, user_id, timestamps)
+interface LibraryCard {
+  id: string;                   // Server-assigned UUID
+  user_id: string;
+  generation_request_id: string;
+  front: string;
+  back: string;
+  card_type: 'basic' | 'cloze';
+  tags: string[];
+  notes: string;
+  source_quote: string;
+  domain: CardDomain;
+  metadata: Record<string, unknown>;
+  confidence_scores: { atomicity: number; self_contained: number };
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// EditableCard — minimum shape for CardEditor (both Card and LibraryCard satisfy)
+interface EditableCard { id, front, back, card_type, tags, notes }
+
+// UpdateCardRequest — PATCH /cards/:id body
+interface UpdateCardRequest { front?, back?, tags?, notes?, domain? }
+```
+
+**Filters:**
+
+```typescript
+interface CardFilters {
+  page?: number;                // Default 1
+  limit?: number;               // Default 20
+  domain?: CardDomain;
+  search?: string;              // Full-text search on front/back
+  sort?: 'created_at' | 'updated_at' | 'domain';
+  order?: 'asc' | 'desc';
+  tag?: string;                 // Filter by single tag
+  created_after?: string;       // ISO date string
+  created_before?: string;      // ISO date string
+}
+```
+
+### New Backend Endpoints
+
+These endpoints are added to the existing `flashcard-backend`:
+
+**GET /cards** — Paginated card library
+
+```typescript
+// Query parameters
+{
+  page: number;                  // Default 1
+  limit: number;                 // Default 50, max 100
+  domain?: CardDomain;           // Filter by domain
+  search?: string;               // Full-text search on front/back
+  sort?: 'created_at' | 'domain'; // Default 'created_at'
+  order?: 'asc' | 'desc';       // Default 'desc'
+}
+
+// Response (200)
+{
+  request_id: string;
+  cards: Card[];
+  pagination: {
+    page: number;
+    limit: number;
+    total_cards: number;
+    total_pages: number;
+  };
+}
+```
+
+**DELETE /cards/:id** — Soft delete a card
+
+```typescript
+// Response (200)
+{ request_id: string; deleted: true; }
+
+// Response (404) — card doesn't exist or belongs to another user
+{ request_id: string; error: "Card not found"; code: "NOT_FOUND"; }
+```
+
+**DELETE /cards** — Bulk soft delete
+
+```typescript
+// Request
+{ card_ids: string[]; }  // Max 100
+
+// Response (200)
+{ request_id: string; deleted_count: number; }
+```
+
+**Modification to existing POST /cards/generate:**
+
+After returning the response, the handler writes generated cards to the `cards` table via `waitUntil()`:
+
+```typescript
+// In cards.ts route handler, after constructing the response:
+const response = c.json(responseBody, 200);
+
+ctx.executionContext.waitUntil(
+  persistGeneratedCards(env, userId, generationRequestId, responseBody.cards)
+);
+
+return response;
+```
+
+This is the only code change to the existing generate flow. The response shape is unchanged — clients are unaffected.
 
 ### Billing Integration
 
@@ -758,13 +1217,108 @@ Users may generate cards from sensitive content (medical notes, personal journal
 
 ### .apkg Export (Client-Side)
 
-No server-side export endpoint needed. Client builds .apkg locally:
+No `POST /export/cards` endpoint needed. The client already has card data (from generation response or library fetch). Export flow:
 
 1. User selects cards + enters deck name
-2. Client loads sql.js WASM (~1MB, cached), creates SQLite DB with Anki schema
-3. JSZip packages as `.apkg` (renamed `.zip`), browser triggers download
+2. Client loads sql.js WASM (~1MB, cached after first load)
+3. Client creates SQLite database in memory with Anki schema (notes, cards, col tables)
+4. Client packages as .zip with JSZip (Anki .apkg = renamed .zip containing SQLite DB + media)
+5. Browser triggers download of `{deckName}.apkg`
 
-Media URLs left as references for MVP — Anki fetches on first review. Media embedding deferred to Phase 5.
+Reference implementation: `flashcard-backend/docs/spikes/apkg-code/`
+
+Media handling: TTS audio and images referenced in cards are URLs. The .apkg can either embed them (download → include in zip) or leave as URL references. For MVP, leave as URLs — Anki will fetch them on first review. Phase 5 can add media embedding if users request it.
+
+## Project Structure
+
+```
+flashcard-web/
+├── index.html                      # SPA entry point (minimal shell)
+├── public/
+│   ├── sql-wasm.wasm              # sql.js WASM binary
+│   ├── _headers                    # CSP + security headers (Cloudflare)
+│   ├── landing.html               # Pre-rendered (built at deploy, gitignored)
+│   ├── pricing.html               # Pre-rendered
+│   ├── privacy.html               # Pre-rendered
+│   └── terms.html                 # Pre-rendered
+├── src/
+│   ├── main.tsx                    # Entry — initializes auth, renders App
+│   ├── App.tsx                     # Route definitions (BrowserRouter) + lazy loading
+│   ├── index.css                   # Tailwind v4 + shadcn CSS variables
+│   ├── vite-env.d.ts               # ImportMetaEnv types
+│   ├── types/
+│   │   └── cards.ts                # Card, EditableCard, LibraryCard, UpdateCardRequest, ExportFormat
+│   ├── routes/
+│   │   ├── Landing.tsx             # Marketing landing page
+│   │   ├── Pricing.tsx             # 3-tier pricing page
+│   │   ├── Privacy.tsx             # GDPR privacy policy
+│   │   ├── Terms.tsx               # Terms of service
+│   │   ├── Login.tsx               # Auth: login form
+│   │   ├── Signup.tsx              # Auth: signup form
+│   │   └── app/                    # Authenticated routes (auth guard)
+│   │       ├── AppLayout.tsx       # Sidebar nav + usage display + card count badge + outlet
+│   │       ├── Generate.tsx        # Form ↔ review toggle + export selected
+│   │       ├── Library.tsx         # Paginated grid/list, filters, undo delete, export selected
+│   │       ├── Export.tsx          # Format selector, options, preview, download
+│   │       ├── Billing.tsx         # Placeholder (Phase 4)
+│   │       └── Settings.tsx        # Placeholder (Phase 5)
+│   ├── components/
+│   │   ├── AuthGuard.tsx           # Route guard: redirect if unauthenticated
+│   │   ├── MarketingLayout.tsx     # Header + footer for public pages
+│   │   ├── ui/                     # shadcn/ui components (24 installed)
+│   │   ├── cards/
+│   │   │   ├── SanitizedHTML.tsx   # DOMPurify HTML renderer (fc-* safe)
+│   │   │   ├── GenerateForm.tsx    # Domain/style/difficulty form + content textarea
+│   │   │   ├── CardReview.tsx      # Card list with select/edit/delete + quality filter + export
+│   │   │   ├── CardEditor.tsx      # Inline card editor (front/back/tags/notes)
+│   │   │   ├── LibraryCardItem.tsx # Library card: grid/list, domain badge, expand, select
+│   │   │   └── LibraryToolbar.tsx  # Filter toolbar: domain, search, tag, date, sort + pills
+│   │   └── billing/
+│   │       └── UpgradeModal.tsx    # Usage exceeded → tier comparison dialog
+│   ├── lib/
+│   │   ├── api.ts                  # Backend API client (fetch + auth + product_source)
+│   │   ├── supabase.ts            # Supabase browser client (singleton)
+│   │   ├── pricing.ts              # Pricing tier constants
+│   │   ├── utils.ts                # cn() utility (shadcn)
+│   │   ├── constants/
+│   │   │   └── domains.ts          # Shared DOMAIN_LABELS + DOMAIN_COLORS maps
+│   │   ├── validation/
+│   │   │   ├── auth.ts             # Zod schemas: loginSchema, signupSchema
+│   │   │   └── cards.ts            # generateFormSchema, CARD_DOMAINS
+│   │   ├── export/
+│   │   │   ├── types.ts            # ExportResult, ExportFormatConfig, ExportOptionField
+│   │   │   ├── download.ts         # triggerDownload() browser download utility
+│   │   │   ├── html.ts             # stripHtml() shared helper
+│   │   │   ├── csv.ts              # CSV formatter (BOM, escaping, separator options)
+│   │   │   ├── markdown.ts         # Obsidian SR format Markdown formatter
+│   │   │   ├── json.ts             # JSON formatter with field stripping
+│   │   │   ├── apkg.ts             # APKG adapter (lazy-imports builder, maps Card → ApkgCard)
+│   │   │   └── index.ts            # EXPORT_FORMATS registry + dispatchExport() dispatcher
+│   │   ├── apkg/
+│   │   │   ├── schema.ts           # Anki SQLite schema v11 + helpers
+│   │   │   └── builder.ts          # sql.js WASM + JSZip .apkg generator
+│   │   └── hooks/
+│   │       ├── useCards.ts             # Selectors: useCards, useCardActions, useLibrary, etc.
+│   │       ├── useCardCount.ts         # Hybrid hook: store total → API fallback (nav badge)
+│   │       ├── useKeyboardShortcut.ts  # Global keydown with Ctrl/⌘ + input suppression
+│   │       └── useUsage.ts             # Fetches /usage/current on mount
+│   └── stores/
+│       ├── auth.ts                 # Zustand: session, user, signIn/signUp/signOut
+│       ├── cards.ts                # Zustand: pending/library cards, generation, selection, export
+│       └── settings.ts             # Zustand (persist): view mode, recent deck names
+├── scripts/
+│   └── prerender.ts               # Build script: renders marketing pages to static HTML
+├── vite.config.ts                  # react() + tailwindcss() plugins (no CF plugin)
+├── wrangler.jsonc                  # CF Workers config with staging env
+├── package.json
+├── tsconfig.json
+├── vitest.config.ts
+└── tests/
+    ├── unit/                       # 113 tests (9 auth + 8 cards + 12 library + 37 export + etc.)
+    └── e2e/                        # Playwright (not yet configured)
+```
+
+*Key divergences from original plan: `components/marketing/` → flat `MarketingLayout.tsx` (marketing sections live in route pages); `components/export/` → `lib/export/` (8-file format registry, not component pair); `lib/hooks/useAuth.ts` → `stores/auth.ts` (auth is a Zustand store, not a hook); no `tailwind.config.ts` (Tailwind v4 CSS-first); `components/cards/CardList.tsx` → split into `LibraryCardItem.tsx` + `LibraryToolbar.tsx`.*
 
 ## Boundaries
 
@@ -795,36 +1349,113 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 
 ### Phase 1: Project Setup, Auth & Legal Pages — ✅ COMPLETE
 
-- [x] Vite + React 19 + TypeScript project with React Router 7, Tailwind CSS v4, shadcn/ui
-- [x] Cloudflare Workers deployment with SPA fallback routing
-- [x] Landing page, pricing page, privacy policy, terms of service
-- [x] Pre-render script for marketing pages (static HTML with OG meta + JSON-LD)
-- [x] Login/signup via Supabase Auth, auth guard on `/app/*` routes
-- [x] Authenticated app layout with sidebar navigation
-- [ ] Custom domain configuration (deferred — staging only)
-- [ ] Production deploy (blocked on Phase 5b billing)
+**Objectives:** Deployed web app with auth flow, landing page, and legal compliance pages.
+
+**Requirements:**
+1. ✅ Initialize Vite + React 19 + TypeScript project *(used @vitejs/plugin-react + @tailwindcss/vite instead of @cloudflare/vite-plugin — pure SPA dev server is simpler)*
+2. ✅ Install and configure React Router 7 (library mode), Tailwind CSS v4, shadcn/ui
+3. ✅ Configure Cloudflare Workers deployment (`wrangler.jsonc` with `not_found_handling: "single-page-application"`)
+4. ✅ Configure Supabase Auth (shared project with backend)
+5. ✅ Landing page: hero section with value proposition, feature highlights, CTA to signup
+6. ✅ Pricing page: free tier details, Plus/Pro tier cards with pricing, CTA to signup
+7. ✅ Privacy policy page (GDPR-compliant, covering all data processing)
+8. ✅ Terms of service page
+9. ✅ Pre-render script: marketing pages built as static HTML files with OG meta tags for SEO + social sharing *(Option B from SEO strategy, implemented from the start)*
+10. ✅ Login/signup pages using Supabase Auth (email + password for MVP)
+11. ✅ Authenticated app layout with sidebar navigation (Generate, Library, Export, Billing, Settings)
+12. ✅ Auth guard component wrapping `/app/*` routes — redirect to login if unauthenticated
+13. ⏳ Custom domain configuration *(deferred — staging only, production blocked on Phase 5b billing deploy)*
+
+**Backend prerequisite:** Phase 5b billing migration must be deployed to production (so pricing page reflects real tiers and signup flow works end-to-end).
+
+**Acceptance criteria:**
+- [x] Landing page loads with < 2s LCP *(pre-rendered static HTML; Lighthouse measurement deferred)*
+- [x] Signup → email verification → login flow works
+- [x] Authenticated users see app layout with sidebar
+- [x] Unauthenticated users redirected to login
+- [x] Privacy policy and terms accessible from footer on all pages
+- [ ] Deployed to production URL on Cloudflare Workers *(staging only — production blocked on Phase 5b billing)*
+- [ ] Custom domain configuration *(not done)*
 
 ### Phase 2: Card Generation & Review — ✅ COMPLETE
 
-- [x] Generation form: content textarea, domain selector (10 domains), card style, difficulty, max cards
-- [x] LANG domain language selector (JA + Other `hook_key` values)
-- [x] Review panel: inline editing of front, back, tags; delete individual cards
-- [x] Domain-specific metadata display, usage counter, extension handoff via URL params
-- [x] Error handling: USAGE_EXCEEDED → upgrade modal, RATE_LIMITED → toast, VALIDATION_ERROR → inline errors
-- [ ] Usage counter refresh after generation (tracked in backlog)
+**Objectives:** Full generate → review → local editing workflow.
+
+**Requirements:**
+1. ✅ Generation form: content textarea (paste or type), domain selector dropdown (10 domains)
+2. ✅ LANG domain: additional language selector mapping to `hook_key` parameter *(only JA + Other — other language hooks (ZH, KO, HI, AR) deferred until backend hooks ship)*
+3. ✅ Card style selector (basic/cloze/mixed), difficulty (beginner/intermediate/advanced), max cards slider (1-50)
+4. ✅ Call `POST /cards/generate` with `product_source: 'web_app'` and loading state *(loading spinner, not streaming skeleton UI — streaming not supported by backend)*
+5. ✅ Review panel: card list with inline editing of front, back, tags *(notes are display-only in CardEditor — editable in the notes section but not as a primary edit field)*
+6. ✅ Delete individual cards from review
+7. ✅ Domain-specific metadata display (LANG: reading, JLPT level, register; MED: clinical pearl; etc.)
+8. ✅ Usage counter in sidebar or header (cards remaining in period)
+9. ✅ Error handling: USAGE_EXCEEDED → upgrade modal, RATE_LIMITED → toast with retry, VALIDATION_ERROR → inline field errors
+10. ✅ Extension handoff: parse URL query params *(only `content` + `domain` parsed; `source_url` and `source_title` deferred to Browser Extension Phase 1)*
+
+**Backend prerequisite:** None beyond Phase 5b. Existing `POST /cards/generate` already returns everything needed. The `waitUntil()` card persistence is added as part of this phase (small backend change).
+
+**Backend changes in this phase:**
+- ✅ Add `cards` table migration to Supabase
+- ✅ Add `waitUntil()` card persistence in `POST /cards/generate` handler
+- ✅ Add `GET /cards` endpoint (paginated, filtered)
+- ✅ Add `DELETE /cards/:id` and `DELETE /cards` (bulk) endpoints
+
+**Acceptance criteria:**
+- [x] Can generate cards from pasted text for all 10 domains
+- [x] LANG domain shows language selector, correctly passes `hook_key` *(JA + Other only)*
+- [x] Cards are editable inline (front, back, tags)
+- [ ] Usage counter updates after generation *(shows on mount but doesn't refresh post-generation — tracked in backlog)*
+- [x] Free tier exhaustion shows upgrade modal
+- [x] URL with `?content=...` pre-fills the generation form *(content + domain only)*
+- [ ] Generated cards appear in the cards table *(cards table deployed; verify via Supabase dashboard — untested)*
 
 ### Phase 3: Card Library & Management — ✅ COMPLETE
 
-- [x] Paginated card list from `GET /cards` with filters (domain, search, tag, date range, sort)
-- [x] Card detail expand, bulk selection, bulk delete with undo (5s timeout)
-- [x] Responsive grid/list toggle, 3 empty states, loading skeletons
+**Objectives:** Persistent card library with filtering, search, and organization.
+
+**Requirements:**
+1. ✅ Library page: paginated card list fetched from `GET /cards`
+2. ✅ Filters: domain dropdown, date range picker, free-text search *(also: tag filter, sort selector, active filter pills)*
+3. ✅ Sort: by creation date (default, newest first) or by domain *(also: by updated_at)*
+4. ✅ Card detail view: click to expand, showing all fields including metadata
+5. ✅ Bulk selection: checkbox per card, "Select all on page", bulk delete
+6. ✅ Individual card deletion with undo *(5s timeout, not 30s — 5s provides sufficient undo window without delayed server-side deletion)*
+7. ✅ Responsive card grid/list toggle *(view mode persisted in settings store)*
+8. ✅ Empty state for new users ("Generate your first cards →" CTA) *(3 empty states: no cards, filters with no matches, loading skeletons)*
+
+**Acceptance criteria:**
+- [x] Library loads paginated cards from server
+- [x] Search finds cards by front/back content
+- [x] Domain filter works
+- [x] Bulk delete works with undo
+- [x] Pagination controls work (next/prev/jump to page)
+- [x] Empty state shown for users with no cards
 
 ### Phase 4a: Export — ✅ COMPLETE
 
-- [x] 4 export formats: APKG, CSV, Markdown (Obsidian SR), JSON via format registry
-- [x] APKG: sql.js WASM + JSZip, code-split (~143 KB), 2000 card limit, batched inserts, cancel support
-- [x] Deck name input with recent names, card type preview, collapsible format preview
-- [x] CSV options (separator, headers, BOM), JSON options (field inclusion)
+**Objectives:** Multi-format export from card library and generation review.
+
+**Requirements:**
+1. ✅ Export page: select cards from library or pending generation *(cards transferred via `setExportCards()` in Zustand store, not tag filtering)*
+2. ✅ Deck name input with validation *(recent deck names dropdown, max 5 MRU)*
+3. ✅ Card type preview (basic vs cloze count)
+4. ✅ "Export as .apkg" button → sql.js WASM loads → builds SQLite DB → JSZip packages → browser download
+5. ✅ Export progress indicator (for large decks) *(live progress % for APKG with >100 cards, cancel button)*
+6. Tag filtering for export → *(not implemented as a filter; cards are pre-selected from Library or Generate page)*
+
+**Additional features built (not in original spec):**
+- ✅ 4 export formats: APKG, CSV, Markdown (Obsidian SR), JSON *(original spec only had APKG)*
+- ✅ Format registry with dynamic options panel — adding a format requires zero UI code changes
+- ✅ Collapsible preview (first 3 cards in chosen format)
+- ✅ APKG code splitting (~143 KB chunk, lazy-loaded on demand)
+- ✅ APKG robustness: 2000 card limit, batched SQL inserts (100/batch), AbortSignal cancellation
+- ✅ CSV options: separator, header inclusion, BOM for Excel
+- ✅ JSON options: include/exclude metadata fields
+
+**Acceptance criteria:**
+- [x] Can export 10 cards as .apkg, file opens in Anki desktop
+- [x] Can export 50 cards as .apkg without browser hanging
 
 ### Phase 4b: Billing (not started)
 
@@ -852,23 +1483,23 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 **Requirements — Account:**
 1. Settings page: email display, password change (via Supabase Auth)
 2. Data export: "Download my data" → `GET /account/export` → JSON download
-3. Account deletion: "Delete account" with confirmation → `DELETE /account` → cascade → redirect to landing
-4. Default generation preferences saved to user metadata or localStorage
+3. Account deletion: "Delete account" with confirmation dialog → `DELETE /account` → cascades all data → redirect to landing
+4. Default generation preferences (domain, card style, difficulty) saved to Supabase user metadata or localStorage
 
 **Requirements — Polish:**
 1. Dark mode toggle (system/light/dark)
-2. ✅ Loading skeletons for async operations
+2. ✅ Loading skeletons for all async operations *(library page uses 6 skeleton cards)*
 3. Error boundaries with friendly fallback UI
-4. ✅ Keyboard shortcuts: Ctrl+Enter to generate, Ctrl+E to export
-5. Mobile responsive pass (320px, 375px, 768px)
-6. Lighthouse audit: 90+ on performance, accessibility, SEO
-7. ✅ Open Graph meta tags for social sharing
+4. ✅ Keyboard shortcuts: Ctrl+Enter to generate, Ctrl+E to export *(done in Phase 3F — `useKeyboardShortcut` hook with Ctrl/⌘ detection + input suppression)*
+5. Mobile responsive pass (test at 320px, 375px, 768px)
+6. Lighthouse audit: aim for 90+ on performance, accessibility, SEO
+7. ✅ Open Graph meta tags for social sharing *(done in Phase 1 — prerender script adds OG meta + JSON-LD)*
 8. 404 page
 
 **GDPR compliance features:**
-1. Cookie consent banner (minimal — functional cookies only for MVP)
-2. Privacy policy link in signup flow
-3. Data export returns complete user data
+1. Cookie consent banner (minimal — only functional cookies for MVP)
+2. Privacy policy link in signup flow ("By signing up, you agree to our Privacy Policy and Terms")
+3. Data export endpoint returns complete user data
 4. Account deletion cascade fully purges user data
 
 **Acceptance criteria:**
@@ -879,6 +1510,83 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 - [ ] Mobile layout works at 320px width
 - [ ] Cookie consent banner shown on first visit
 - [x] Keyboard shortcuts: Ctrl+Enter to generate, Ctrl+E to export
+
+## Commands
+
+```bash
+npm run dev                      # Vite dev server (plain SPA, no Workers runtime)
+npm run build                    # Production build (prebuild runs prerender → Vite build)
+npm run preview                  # Preview production build locally
+npm run deploy                   # wrangler deploy (production)
+npm run deploy:staging           # Build with --mode staging + wrangler deploy --env staging
+npm run test                     # Vitest (113 tests)
+npm run test:e2e                 # Playwright (not yet configured)
+npm run lint                     # ESLint
+npm run lint:fix                 # ESLint --fix
+npm run typecheck                # tsc --noEmit
+```
+
+## Cloudflare Workers Configuration
+
+The app deploys as static assets on Cloudflare Workers. No adapter, no translation layer — Vite builds the React SPA and Cloudflare serves the output files from its CDN. The `@cloudflare/vite-plugin` is installed but **not used** in development — a pure SPA dev server is simpler and avoids Workers runtime differences during local development.
+
+**`wrangler.jsonc`:**
+```jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "memogenesis-web",
+  "compatibility_date": "2025-04-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "env": {
+    "staging": {
+      "name": "memogenesis-web-staging",
+      "assets": {
+        "directory": "./dist",
+        "not_found_handling": "single-page-application"
+      }
+    }
+  }
+}
+```
+
+**`vite.config.ts`:**
+```typescript
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
+});
+```
+
+Key properties:
+- **No `cloudflare()` plugin in dev**: Intentional — pure SPA dev server avoids Workers runtime complexity. The CF plugin is installed for future use if server-side logic is needed.
+- **`not_found_handling: "single-page-application"`**: Non-asset requests return `index.html` so React Router handles client-side routing. This means `/app/generate` doesn't 404 — it loads the SPA shell and React Router renders the Generate page.
+- **Staging environment**: `npm run deploy:staging` builds with `--mode staging` (reads `.env.staging`) and deploys to `memogenesis-web-staging` Workers script.
+- **Static asset requests are free**: No Worker compute is invoked for serving the built JS/CSS/HTML files. Only API calls to the separate backend Worker incur compute costs.
+- **Environment variables**: Baked into the build via Vite's `import.meta.env` (prefix with `VITE_`). Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL` in `.env.production`.
+- **Pre-rendered marketing pages**: Built as static `.html` files in `public/` during the build step. Cloudflare serves these directly for `/landing.html`, `/pricing.html`, etc. The root `index.html` can redirect `/` to the landing page or serve it inline.
+
+### SEO Strategy for Marketing Pages
+
+Marketing pages (landing, pricing, privacy, terms) need complete HTML with meta tags for search engines and social sharing previews.
+
+**Implemented: Option B (pre-render script).** `scripts/prerender.ts` renders React marketing page components to static HTML using `react-dom/server.renderToString()` at build time. This keeps marketing content in React components (shared with SPA navigation) while producing static HTML for crawlers. Each page includes:
+- Full `<head>` with OG meta tags + JSON-LD structured data
+- CSP-hashed inline redirect script (hash in `public/_headers`)
+- All interpolated values HTML-escaped; JSON-LD uses `JSON.stringify`
+- Output: `public/{page}.html` (gitignored build artifacts)
+- Runs automatically via `prebuild` npm hook
 
 ---
 
@@ -998,6 +1706,16 @@ Domain pre-selector in popup, smart content extraction (tables, code blocks, str
 ### Phase 3: Polish (1-3 hours)
 Extension icon and branding, onboarding page (shown on install, explains the flow), options page (web app URL override for self-hosted), dark mode support matching system preference.
 
+## Commands
+
+```bash
+npm run dev              # Chrome dev mode with HMR
+npm run dev:firefox      # Firefox dev mode
+npm run build            # Production build (all browsers)
+npm run zip              # Create .zip for store submission
+npm run test             # Vitest
+```
+
 ---
 
 # Product Backlog
@@ -1019,8 +1737,6 @@ Extension icon and branding, onboarding page (shown on install, explains the flo
 3. **Duplicate detection against existing cards** — Before generation, client sends existing card fronts (or hashes) from the target deck as context. Prompt skips concepts already covered. Increases token usage but prevents the highest-trust-destroying outcome: paying for cards you already have. Two implementation paths: (a) client sends existing cards in request body (new field), (b) server-side if cards table exists (web app can query, Anki add-on sends from local DB). Affects: API contract, Anki add-on, web app.
 
 4. **Target keywords / topics / goals** — Richer steering beyond free-text guidance. Structured fields: `target_keywords: string[]`, `learning_goals: string`, `exclude_topics: string[]`. Lower priority than free-text guidance — build that first, see if structured input adds value. Affects: API contract, all clients.
-
-5. **PRD format: feature-list-only** — Consider replacing the phase-based structure with a flat feature catalog (table of features × status × key specs) for each sub-project. Phases served their purpose during development but completed phases are now historical records. A feature list would be more scannable. Evaluate after the 2026-02-28 compression pass.
 
 ---
 
@@ -1146,5 +1862,5 @@ An iOS companion using the same Expo codebase. Would provide share sheet capture
 
 ---
 *Last updated: 2026-02-28*
-*Changes: PRD restructuring — compressed implementation detail from completed phases, removed config file contents (vite.config.ts, wrangler.jsonc, env tables), removed project structure trees (4 PRDs), removed commands sections (4 PRDs), removed duplicate endpoint contracts from PRD 3, replaced SQL DDL and TypeScript interfaces with summary tables, re-ordered backend phases (Cards Table + GDPR → Phase 6), added 6 missing endpoints to backend README, added feature-list format item to backlog. Pre-restructure archive: `docs/archive/PRD-2026-02-28-pre-restructure.md`. Previous: PRD 3 web app audit.*
+*Changes: PRD 3 web app audit — marked completed acceptance criteria, recorded divergences from spec (LANG selector, export formats, undo timing, SEO strategy), updated tech stack (no CF plugin, added Zod/DOMPurify/react-hook-form), updated project structure to match actual codebase, split Phase 4 into 4a (export, complete) and 4b (billing, not started), updated data models to reflect 3-store Zustand architecture + Card/LibraryCard split, updated commands/CF config/SEO sections. Previous: PRD 1 backend specification audit.*
 
