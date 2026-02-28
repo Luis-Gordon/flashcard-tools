@@ -6,7 +6,7 @@ AI-powered flashcard generation and enhancement ecosystem: serverless API + Anki
 flashcard-tools/
 ├── flashcard-backend/   # Cloudflare Workers API (Hono, TypeScript)
 ├── flashcard-anki/      # Anki desktop add-on (Python, PyQt6)
-└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — Phase 1 complete
+└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — Phase 3 in progress
 ```
 
 Each sub-project has its own CLAUDE.md, architecture doc, and session log. The PRD is consolidated at the repo root (`PRD.md`). **Always read the sub-project CLAUDE.md before working in that directory.**
@@ -16,7 +16,9 @@ Each sub-project has its own CLAUDE.md, architecture doc, and session log. The P
 ### Backend (`flashcard-backend/`)
 ```bash
 npm run dev              # wrangler dev --local
-npm run test             # vitest
+npm run test             # vitest (unit + integration)
+npm run test:unit        # unit tests only (Node pool)
+npm run test:integration # integration tests only (Workers pool)
 npm run typecheck        # tsc --noEmit
 npm run lint:fix         # eslint src/ --fix
 npm run deploy:staging   # wrangler deploy --env staging
@@ -28,6 +30,16 @@ pytest tests/ -v         # Run all tests
 flake8 src/              # Lint
 mypy src/                # Type check
 python tools/package.py  # Build .ankiaddon
+```
+
+### Web App (`flashcard-web/`)
+```bash
+npm run dev              # Vite dev server (plain SPA, no Workers runtime)
+npm run build            # Production build (prebuild runs prerender)
+npm run test             # Vitest
+npm run typecheck        # tsc --noEmit
+npm run lint:fix         # eslint src/ --fix
+npm run deploy           # wrangler deploy
 ```
 
 ## Tech Stack
