@@ -52,6 +52,7 @@ npm run deploy           # wrangler deploy
 | TTS | OpenAI TTS API → Cloudflare R2 cache |
 | Images | Unsplash API |
 | Payments | Stripe (subscription + metered overage billing, Phase 5b complete) |
+| Web app | Vite 6, React 19, Tailwind v4, shadcn/ui, Zustand, React Router 7 |
 | Anki add-on | Python 3.9+, PyQt6, requests |
 | Validation | Zod (backend), type hints + TypedDict (add-on) |
 
@@ -111,6 +112,12 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 - Routes split by action: `generate.ts`, `enhance.ts` composed by thin `cards.ts` router
 - Backend external API timeouts: Claude 60s, TTS 15s, Unsplash 10s
 - Client-side timeouts: generate 60s, enhance 120s, TTS 15s, image 10s
+
+### Web App (TypeScript/React)
+- React 19, Vite 6, Tailwind v4 with CSS-first config
+- Zustand stores (cards, auth, settings)
+- DOMPurify for card HTML sanitization
+- All API calls include `product_source: 'web_app'`
 
 ### Add-on (Python)
 - Python 3.9+ compatible (Anki's bundled version)
