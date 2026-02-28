@@ -2,6 +2,12 @@
 
 This document contains four PRDs for a suite of AI-powered flashcard tools sharing a common backend. Build in sequence: Backend → Anki Add-on → Browser Extension → Android App.
 
+> **Scope**: Product specification — feature inventory, API contracts, data models, error codes, billing tiers, domain rules, and acceptance criteria for incomplete phases.
+>
+> **Not here**: Config files, directory trees, commands, code samples, implementation notes ("used X instead of Y"). These live in each sub-project's `CLAUDE.md`, `README`, or `docs/architecture.md`.
+>
+> **Style**: Completed phases get a brief summary of what was built. Incomplete phases keep full requirements and acceptance criteria.
+
 > **Current Status (2026-02-28)**: Backend Phases 1–7b complete (all 10 domains, 13 sub-hooks, billing, cards table, GDPR endpoints). Anki Add-on Phases 1–6 + 7c complete, 7d not started. Web App Phases 1–3 + 4a (export) complete, staging deployed. Next: Web App Phase 4b (billing integration).
 
 ---

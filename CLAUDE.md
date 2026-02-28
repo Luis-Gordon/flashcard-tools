@@ -1,12 +1,12 @@
 # Flashcard Tools
-AI-powered flashcard generation and enhancement ecosystem: serverless API + Anki desktop add-on.
+AI-powered flashcard generation and enhancement ecosystem (**Memogenesis**): serverless API + Anki desktop add-on + web app.
 
 ## Repository Structure
 ```
 flashcard-tools/
 ├── flashcard-backend/   # Cloudflare Workers API (Hono, TypeScript)
 ├── flashcard-anki/      # Anki desktop add-on (Python, PyQt6)
-└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — Phase 3 in progress
+└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — Phase 4a (export) complete, Phase 4b (billing) next
 ```
 
 Each sub-project has its own CLAUDE.md, architecture doc, and session log. The PRD is consolidated at the repo root (`PRD.md`). **Always read the sub-project CLAUDE.md before working in that directory.**
@@ -51,7 +51,7 @@ npm run deploy           # wrangler deploy
 | AI | Claude API (`claude-sonnet-4-5-20250929` primary, `claude-haiku-4-5-20251001` cost-sensitive) |
 | TTS | OpenAI TTS API → Cloudflare R2 cache |
 | Images | Unsplash API |
-| Payments | Stripe (metered billing, deferred) |
+| Payments | Stripe (subscription + metered overage billing, Phase 5b complete) |
 | Anki add-on | Python 3.9+, PyQt6, requests |
 | Validation | Zod (backend), type hints + TypedDict (add-on) |
 
@@ -73,7 +73,7 @@ The Anki add-on and web app are the primary API consumers. These contracts are e
 | `CONTENT_TOO_LARGE` | 413 | Reject before processing | Show size limit message |
 | `INTERNAL_ERROR` | 500 | Log full trace, return `request_id` only | Show "Something went wrong" + `request_id` |
 
-Full endpoint list in each sub-project's CLAUDE.md. Key routes: `/auth/*`, `/cards/generate`, `/cards/enhance`, `/assets/tts`, `/assets/image`.
+Full endpoint list in each sub-project's CLAUDE.md. Key routes: `/auth/*`, `/cards/generate`, `/cards/enhance`, `/cards` (CRUD), `/assets/tts`, `/assets/image`, `/billing/*`, `/account/*`.
 
 ### Content Limits
 | Type | Max Size |
@@ -157,6 +157,7 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 | Backend architecture | `flashcard-backend/docs/architecture.md` | Living system state |
 | Anki architecture | `flashcard-anki/docs/architecture.md` | Living system state |
 | Session logs | `{project}/docs/session-log.md` | Append-only history |
+| Billing spec | `flashcard-backend/docs/billing-spec.md` | Stripe billing design |
 | Product Backlog | PRD.md § Product Backlog | Open design questions + planned features |
 | Project backlogs | `{project}/docs/backlog.md` | Per-project task tracking |
 
