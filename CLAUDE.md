@@ -6,7 +6,7 @@ AI-powered flashcard generation and enhancement ecosystem (**Memogenesis**): ser
 flashcard-tools/
 ├── flashcard-backend/   # Cloudflare Workers API (Hono, TypeScript)
 ├── flashcard-anki/      # Anki desktop add-on (Python, PyQt6)
-└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — Phase 4a (export) complete, Phase 4b (billing) next
+└── flashcard-web/       # Web app (Vite, React, Cloudflare Workers) — all phases complete, staging deployed
 ```
 
 Each sub-project has its own CLAUDE.md, architecture doc, and session log. The PRD is consolidated at the repo root (`PRD.md`). **Always read the sub-project CLAUDE.md before working in that directory.**
@@ -51,7 +51,7 @@ npm run deploy           # wrangler deploy
 | AI | Claude API (`claude-sonnet-4-5-20250929` primary, `claude-haiku-4-5-20251001` cost-sensitive) |
 | TTS | OpenAI TTS API → Cloudflare R2 cache |
 | Images | Unsplash API |
-| Payments | Stripe (subscription + metered overage billing, Phase 5b complete) |
+| Payments | Stripe (subscription + metered overage billing) |
 | Web app | Vite 6, React 19, Tailwind v4, shadcn/ui, Zustand, React Router 7 |
 | Anki add-on | Python 3.9+, PyQt6, requests |
 | Validation | Zod (backend), type hints + TypedDict (add-on) |
@@ -104,14 +104,34 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 - **Single source of truth**: Backend prompts define the HTML structure; `src/styles/stylesheet.py` in the add-on defines the CSS
 - Changes to class names or structure must be coordinated across both projects
 
+## Deployment Coordination
+
+> **Lesson from Session 58 outage**: The backend uses `.strict()` Zod validation on all request schemas. Adding a new field to any request schema is a **breaking change** — the deployed backend will reject requests containing the new field. This caused a multi-day generation outage when the web app was deployed with new request fields against an old backend.
+
+### Rules
+1. **Backend-first deployment**: When a session modifies API request/response schemas (Zod schemas in `src/lib/validation/`), the backend **MUST** be deployed before any client that sends the new fields. Deploy backend → verify health → deploy client.
+2. **Coordinated deploys**: When changes span both backend and a client (web or anki), deploy and verify both in the same session. Never commit cross-project schema changes without deploying both sides.
+3. **CORS allowlist**: When adding a new client deployment URL, add it to `ALLOWED_ORIGINS` in `wrangler.jsonc` for the relevant environment **before** deploying the client.
+4. **Staging web app**: Always use `npm run deploy:staging` (not manual `build` + `deploy --env staging`). The `deploy:staging` script handles `--mode staging` to pick up `.env.staging`. Using bare `build` produces a production build pointing to the wrong backend.
+
+### Deployment Checklist (cross-project changes)
+```
+1. Backend: npm run typecheck && npm run test
+2. Backend: npm run deploy:staging
+3. Backend: curl health/ready → verify 200
+4. Client: npm run deploy:staging (or deploy:staging for web)
+5. Client: manual smoke test on staging
+6. If staging passes → deploy both to production
+```
+
 ## Cross-Project Conventions
 
 ### Backend (TypeScript)
 - Strict mode, type-only imports, no `any`
-- Zod validation in `src/lib/validation/{domain}.ts` with `.strict()`
+- Zod validation in `src/lib/validation/{domain}.ts` with `.strict()` — **new request fields are breaking changes, require backend-first deploy**
 - Routes split by action: `generate.ts`, `enhance.ts` composed by thin `cards.ts` router
 - Backend external API timeouts: Claude 60s, TTS 15s, Unsplash 10s
-- Client-side timeouts: generate 60s, enhance 120s, TTS 15s, image 10s
+- Client-side timeouts: generate 90s, enhance 120s, TTS 15s, image 10s
 
 ### Web App (TypeScript/React)
 - React 19, Vite 6, Tailwind v4 with CSS-first config
@@ -147,6 +167,7 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 - Modifying rate limits, pricing, or content size limits
 - Adding new Python dependencies (must be bundled with Anki)
 - Batch operations on > 100 cards
+- Deploying to production (always deploy + verify staging first)
 
 ### 🚫 Never
 - Commit API keys, tokens, or secrets
@@ -163,6 +184,7 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 | Web App CLAUDE.md | `flashcard-web/CLAUDE.md` | Full web app dev guide |
 | Backend architecture | `flashcard-backend/docs/architecture.md` | Living system state |
 | Anki architecture | `flashcard-anki/docs/architecture.md` | Living system state |
+| Web app architecture | `flashcard-web/docs/architecture.md` | Living system state |
 | Session logs | `{project}/docs/session-log.md` | Append-only history |
 | Billing spec | `flashcard-backend/docs/billing-spec.md` | Stripe billing design |
 | Product Backlog | PRD.md § Product Backlog | Open design questions + planned features |
@@ -170,14 +192,37 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 
 **Rule**: If PRD and CLAUDE.md conflict, PRD wins.
 
+## Agent System
+
+Slash commands and agents in `.claude/commands/` and `.claude/agents/` automate common workflows.
+
+### Slash Commands
+| Command | Purpose | Argument |
+|---------|---------|----------|
+| `/session-start` | Load context (CLAUDE.md, session log, backlog) | `backend`, `anki`, `web`, or `all` |
+| `/check` | Run quality gates (typecheck → lint → test) | project name or omit for auto-detect |
+| `/session-end` | Complete session: gates → docs → commit prep | summary of work done |
+| `/review` | Code review against conventions | files, project, or commit range |
+| `/cross-check` | API contract consistency check | `errors`, `endpoints`, `html`, `schemas`, `limits`, `deploy`, or `all` |
+
+### Agents (`.claude/agents/`)
+| Agent | Model | Purpose |
+|-------|-------|---------|
+| `quality-gate` | haiku | Isolated quality gate runner (keeps verbose output out of main context) |
+| `doc-updater` | haiku | Updates session log, CLAUDE.md status, architecture docs |
+| `explorer` | haiku | Cross-project codebase exploration and contract analysis |
+| `reviewer` | sonnet | Code review with project-specific checklist |
+
+### Skill
+- **API Contract** (`.claude/skills/api-contract/SKILL.md`): Consolidated cross-project contract reference (error codes, HTML classes, content limits, timeouts, endpoints)
+
 ## Session Workflow
-1. **Identify scope** — which sub-project(s) does this touch?
-2. **Read sub-project CLAUDE.md** — it has project-specific conventions and status
-3. **Check recent context** — read the last 1-2 entries in the sub-project's `docs/session-log.md`
-4. **Implement** — follow sub-project conventions
-5. **Run quality gates** — both projects must pass their respective checks
-6. **Update docs** — session log, architecture (if structure changed), CLAUDE.md status
-7. **Commit and push** — each sub-project has its own git repo; commit from within the sub-project directory
+1. **Start session** — run `/session-start {project}` to load context
+2. **Implement** — follow sub-project conventions
+3. **Check quality** — run `/check` periodically during development
+4. **End session** — run `/session-end "summary"` to validate, document, and prepare commits
+5. **Deploy** — if changes touch API schemas or cross-project contracts, follow the Deployment Coordination checklist above
+6. **Commit and push** — each sub-project has its own git repo; commit from within the sub-project directory
 
 ## Non-Goals (Current Phase)
 - Android app client (gated on Gate 4 demand data)

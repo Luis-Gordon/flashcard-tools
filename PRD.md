@@ -8,7 +8,7 @@ This document contains four PRDs for a suite of AI-powered flashcard tools shari
 >
 > **Style**: Completed phases get a brief summary of what was built. Incomplete phases keep full requirements and acceptance criteria.
 
-> **Current Status (2026-02-28)**: Backend Phases 1–7b complete (all 10 domains, 13 sub-hooks, billing, cards table, GDPR endpoints). Anki Add-on Phases 1–6 + 7c complete, 7d not started. Web App Phases 1–3 + 4a (export) complete, staging deployed. Next: Web App Phase 4b (billing integration).
+> **Current Status (2026-03-02)**: Backend Phases 1–7b complete (all 10 domains, 13 sub-hooks, billing, cards table, GDPR endpoints). Anki Add-on Phases 1–6 + 7c complete, 7d not started. Web App all phases complete (163/163 tests), staging deployed. Next: production deployment.
 
 ---
 
@@ -19,7 +19,7 @@ title: "Flashcard Tools Backend"
 status: active
 priority: critical
 created: 2025-01-26
-updated: 2026-02-28
+updated: 2026-03-02
 owner: Luis
 dependencies: []
 estimated_effort: 20-27 hours (Phases 1-4 done)
@@ -616,10 +616,10 @@ title: "Flashcard Tools Web App"
 status: active
 priority: high
 created: 2026-02-21
-updated: 2026-02-28
+updated: 2026-03-03
 owner: Luis
 dependencies: ["Flashcard Tools Backend (Phase 5b Billing deployed)"]
-estimated_effort: 25-35 hours (Phases 1-3 done)
+estimated_effort: 25-35 hours (all phases complete)
 ```
 
 ## Executive Summary
@@ -808,7 +808,7 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 - [x] Login/signup via Supabase Auth, auth guard on `/app/*` routes
 - [x] Authenticated app layout with sidebar navigation
 - [ ] Custom domain configuration (deferred — staging only)
-- [ ] Production deploy (blocked on Phase 5b billing)
+- [ ] Production deploy (env vars + smoke test)
 
 ### Phase 2: Card Generation & Review — ✅ COMPLETE
 
@@ -817,7 +817,7 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 - [x] Review panel: inline editing of front, back, tags; delete individual cards
 - [x] Domain-specific metadata display, usage counter, extension handoff via URL params
 - [x] Error handling: USAGE_EXCEEDED → upgrade modal, RATE_LIMITED → toast, VALIDATION_ERROR → inline errors
-- [ ] Usage counter refresh after generation (tracked in backlog)
+- [x] Usage counter refresh after generation (USAGE_CHANGED_EVENT custom DOM event)
 
 ### Phase 3: Card Library & Management — ✅ COMPLETE
 
@@ -832,59 +832,18 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 - [x] Deck name input with recent names, card type preview, collapsible format preview
 - [x] CSV options (separator, headers, BOM), JSON options (field inclusion)
 
-### Phase 4b: Billing (not started)
+### Phase 4b: Billing — ✅ COMPLETE
 
-**Objectives:** Full billing integration with Stripe.
+Stripe Checkout redirect for upgrades, Customer Portal for subscription management, usage progress bar with overage display, UpgradeModal on USAGE_EXCEEDED (402), post-checkout polling for tier updates, tier badge display.
 
-**Requirements:**
-1. Billing page: current plan badge, usage bar (cards used / limit), period end date
-2. Overage display for paid tiers (cards beyond limit, estimated cost)
-3. "Upgrade" button → `POST /billing/checkout` → redirect to Stripe Checkout
-4. "Manage Billing" button → `GET /billing/portal` → redirect to Stripe Customer Portal
-5. Usage data from `GET /usage/current` refreshed on page load and after each generation
-6. Upgrade modal (triggered by USAGE_EXCEEDED on free tier): plan comparison, upgrade CTA
-7. Subscription inactive banner (triggered by USAGE_EXCEEDED with `reason: 'subscription_inactive'`)
+### Phase 5: Settings, Account Management & Polish — ✅ COMPLETE
 
-**Acceptance criteria:**
-- [ ] Billing page shows correct tier, usage, and period
-- [ ] Upgrade flow: click upgrade → Stripe Checkout → success redirect → tier updated
-- [ ] Manage billing: click → Customer Portal → return to app
-- [ ] Free tier user hitting limit sees upgrade modal with plan options *(modal exists but billing flow not wired)*
+Settings page (5 sections: account info, appearance, change password, data export, danger zone), dark mode (system/light/dark with OKLCH variables, no FOWT), GDPR data export (JSON download), account deletion with email confirmation cascade, 404 catch-all page, auth-aware marketing header, keyboard shortcuts (Ctrl+Enter generate, Ctrl+E export), loading skeletons, OG meta tags, usage refresh after generation via USAGE_CHANGED_EVENT.
 
-### Phase 5: Settings, Account Management & Polish (partially complete)
-
-**Objectives:** Account lifecycle management, GDPR compliance features, and UX polish.
-
-**Requirements — Account:**
-1. Settings page: email display, password change (via Supabase Auth)
-2. Data export: "Download my data" → `GET /account/export` → JSON download
-3. Account deletion: "Delete account" with confirmation → `DELETE /account` → cascade → redirect to landing
-4. Default generation preferences saved to user metadata or localStorage
-
-**Requirements — Polish:**
-1. Dark mode toggle (system/light/dark)
-2. ✅ Loading skeletons for async operations
-3. Error boundaries with friendly fallback UI
-4. ✅ Keyboard shortcuts: Ctrl+Enter to generate, Ctrl+E to export
-5. Mobile responsive pass (320px, 375px, 768px)
-6. Lighthouse audit: 90+ on performance, accessibility, SEO
-7. ✅ Open Graph meta tags for social sharing
-8. 404 page
-
-**GDPR compliance features:**
-1. Cookie consent banner (minimal — functional cookies only for MVP)
-2. Privacy policy link in signup flow
-3. Data export returns complete user data
-4. Account deletion cascade fully purges user data
-
-**Acceptance criteria:**
-- [ ] Data export downloads JSON with all user cards and account info
-- [ ] Account deletion removes all data and redirects to landing
-- [ ] Dark mode works across all pages
-- [ ] Lighthouse performance > 90 on landing page
-- [ ] Mobile layout works at 320px width
-- [ ] Cookie consent banner shown on first visit
-- [x] Keyboard shortcuts: Ctrl+Enter to generate, Ctrl+E to export
+**Remaining polish (not blocking production):**
+- [ ] Mobile responsive pass (320px, 375px, 768px)
+- [ ] Lighthouse audit: 90+ on performance, accessibility, SEO
+- [ ] Cookie consent banner (functional cookies only for MVP)
 
 ---
 
@@ -1102,7 +1061,7 @@ Single account across all products. Free tier: 50 cards/month unified across eco
 ```
 Backend API (Phases 1-4 ✅, 5b ✅, cards+GDPR ✅)
     → Anki Add-on (Phases 1-6 ✅, Phase 7 optional)
-    → Web App (Phases 1-3 ✅, Phase 4a export ✅, Phase 4b billing next)
+    → Web App (Phases 1-5 ✅, production deploy next)
         → Browser Extension (thin capture shim)
         → Mobile Apps (gated on demand data)
 ```
@@ -1113,7 +1072,7 @@ Backend API (Phases 1-4 ✅, 5b ✅, cards+GDPR ✅)
 
 **Gate 2 (After Anki Add-on Phase 6)** ✅ Passed. Enhance 50+ cards from actual decks. AI suggestions confirmed useful.
 
-**Gate 3 (After Web App Phase 4)**: Export portion complete (4 formats: APKG, CSV, Markdown, JSON). Billing portion not started — blocked on Phase 5b production deploy. Gate evaluation deferred until billing integration complete.
+**Gate 3 (After Web App Phase 4)**: Export complete (4 formats: APKG, CSV, Markdown, JSON). Billing complete (Stripe Checkout, Customer Portal, usage display, UpgradeModal). Gate evaluation: pending production deployment and real-user testing.
 
 **Gate 4 (After Browser Extension Phase 1 + 1 month usage)**: Are users trying to capture from mobile? Is the web app's responsive design sufficient, or do they need native share sheet? Go/no-go on mobile apps.
 
@@ -1135,7 +1094,7 @@ Backend API (Phases 1-4 ✅, 5b ✅, cards+GDPR ✅)
 | Backend (cards table + endpoints) | 2-3 | ✅ Complete |
 | Anki Add-on (Phases 1-6) | 15-19 | ✅ Complete |
 | Anki Add-on (Phase 7 CSS/Furigana) | 3-5 | 7c complete, 7d not started |
-| **Web App (Phases 1-3 + 4a export)** | **25-35** | ✅ Phases 1-3 complete, export complete; billing next |
+| **Web App (Phases 1-5)** | **25-35** | ✅ All phases complete; production deploy next |
 | Browser Extension | 8-12 | After web app |
 | Android App | 18-22 | Gated on Gate 4 |
 | **Total (through web app)** | **~75-100** | |
@@ -1151,6 +1110,6 @@ Native apps using Expo (React Native) providing share sheet capture from mobile 
 An iOS companion using the same Expo codebase. Would provide share sheet capture from Safari and other iOS apps. Gated on Gate 4 demand data and Android app validation. Estimated 10-15 hours incremental effort over Android (shared codebase, platform-specific share sheet and AnkiMobile integration, App Store submission).
 
 ---
-*Last updated: 2026-02-28*
-*Changes: PRD restructuring — compressed implementation detail from completed phases, removed config file contents (vite.config.ts, wrangler.jsonc, env tables), removed project structure trees (4 PRDs), removed commands sections (4 PRDs), removed duplicate endpoint contracts from PRD 3, replaced SQL DDL and TypeScript interfaces with summary tables, re-ordered backend phases (Cards Table + GDPR → Phase 6), added 6 missing endpoints to backend README, added feature-list format item to backlog. Pre-restructure archive: `docs/archive/PRD-2026-02-28-pre-restructure.md`. Previous: PRD 3 web app audit.*
+*Last updated: 2026-03-02*
+*Changes: Documentation audit — updated status timestamps. Previous: PRD restructuring.*
 
