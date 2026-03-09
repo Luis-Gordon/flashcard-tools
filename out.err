@@ -1,0 +1,10 @@
+Loaded cached credentials.
+Error executing tool run_shell_command: Tool "run_shell_command" not found. Did you mean one of: "grep_search", "cli_help", "read_file"?
+[LocalAgentExecutor] Skipping subagent tool 'codebase_investigator' for agent 'generalist' to prevent recursion.
+[LocalAgentExecutor] Skipping subagent tool 'cli_help' for agent 'generalist' to prevent recursion.
+[LocalAgentExecutor] Skipping subagent tool 'generalist' for agent 'generalist' to prevent recursion.
+[LocalAgentExecutor] Blocked call: Unauthorized tool call: 'run_shell_command' is not available to this agent.
+[LocalAgentExecutor] Blocked call: Unauthorized tool call: 'generalist' is not available to this agent.
+Error executing tool read_file: File path 'C:\Users\luisw\projects\flashcard-tools\flashcard-backend\package.json' is ignored by configured ignore patterns.
+Error executing tool read_file: File path 'C:\Users\luisw\projects\flashcard-tools\flashcard-web\package.json' is ignored by configured ignore patterns.
+Error executing tool read_file: File path 'C:\Users\luisw\projects\flashcard-tools\flashcard-backend\.gitignore' is ignored by configured ignore patterns.

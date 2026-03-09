@@ -204,6 +204,7 @@ Slash commands and agents in `.claude/commands/` and `.claude/agents/` automate 
 | `/session-end` | Complete session: gates → docs → commit prep | summary of work done |
 | `/review` | Code review against conventions | files, project, or commit range |
 | `/cross-check` | API contract consistency check | `errors`, `endpoints`, `html`, `schemas`, `limits`, `deploy`, or `all` |
+| `/plan-review` | Cross-AI plan review (Codex + Gemini) | path to plan file |
 
 ### Agents (`.claude/agents/`)
 | Agent | Model | Purpose |
@@ -215,6 +216,17 @@ Slash commands and agents in `.claude/commands/` and `.claude/agents/` automate 
 
 ### Skill
 - **API Contract** (`.claude/skills/api-contract/SKILL.md`): Consolidated cross-project contract reference (error codes, HTML classes, content limits, timeouts, endpoints)
+
+### Templates (`.claude/templates/`)
+| Template | Purpose |
+|----------|---------|
+| `plan-review-prompt.md` | Structured review prompt sent to Codex and Gemini CLIs |
+
+### MCP Servers (`.mcp.json`)
+| Server | Package | Use When |
+|--------|---------|----------|
+| Cloudflare | `@cloudflare/mcp-server` | Reading Workers logs (`wrangler tail` broken on Windows/bash), managing KV/R2/D1, Workers deployment. **Prefer over wrangler CLI for log access.** |
+| Chrome DevTools | `chrome-devtools-mcp` | Browser debugging — DOM inspection, console logs, network requests, performance profiling. Use for web app frontend issues. |
 
 ## Session Workflow
 1. **Start session** — run `/session-start {project}` to load context

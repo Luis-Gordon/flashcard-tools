@@ -1,0 +1,24 @@
+I will run the tests for the backend, web, and Anki sub-projects to ensure the entire ecosystem is functioning correctly.
+
+I will use the generalist agent to execute the tests for the backend, web, and Anki sub-projects, as they are likely to involve shell commands and high-volume output.
+
+I will list the contents of the root directory and the sub-project directories to see if there are any specific scripts or configurations I can use.
+
+I will read the `package.json` files for the backend and web sub-projects, and I'll also check for a `tests` directory in the Anki project to confirm the test commands.
+
+I will use `grep_search` to find any scripts or configurations that run tests, as some files are currently being ignored.
+
+I will use `cli_help` to inquire about the available tools for running shell commands or tests, as the `run_shell_command` tool appears to be missing from my current configuration.
+
+I will use `grep_search` in the `flashcard-backend` directory to find `vitest` and confirm the presence and location of tests.
+
+I will use `glob` to search for all test files across the three sub-projects, including `*.test.ts`, `*.test.py`, and `test_*.py`.
+
+I will read the `.gitignore` and `.geminiignore` files in the root and sub-project directories to understand why test files are being ignored.
+
+I will list the directories for each sub-project, including the backend, Anki add-on, and web app, while disabling the `respect_git_ignore` option to see all files and subdirectories.
+
+I will use the `codebase_investigator` to investigate how to run the tests across the backend, web app, and Anki add-on projects, as I currently lack the `run_shell_command` tool.
+
+I will read the `out.txt`, `out.json`, and `out.err` files in the root directory to see if they contain any recent test results or logs.
+

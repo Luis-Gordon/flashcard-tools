@@ -1,0 +1,89 @@
+{
+  "session_id": "9e92141b-6b9a-435f-b8b9-54661844da84",
+  "response": "I have processed the workspace context and the mandates for the Memogenesis ecosystem (Backend, Anki Add-on, and Web App). I am ready to assist with the pending production deployment prep or any other directives.",
+  "stats": {
+    "models": {
+      "gemini-2.5-flash-lite": {
+        "api": {
+          "totalRequests": 1,
+          "totalErrors": 0,
+          "totalLatencyMs": 927
+        },
+        "tokens": {
+          "input": 1434,
+          "prompt": 1434,
+          "candidates": 42,
+          "total": 1640,
+          "cached": 0,
+          "thoughts": 164,
+          "tool": 0
+        },
+        "roles": {
+          "utility_router": {
+            "totalRequests": 1,
+            "totalErrors": 0,
+            "totalLatencyMs": 927,
+            "tokens": {
+              "input": 1434,
+              "prompt": 1434,
+              "candidates": 42,
+              "total": 1640,
+              "cached": 0,
+              "thoughts": 164,
+              "tool": 0
+            }
+          }
+        }
+      },
+      "gemini-3-flash-preview": {
+        "api": {
+          "totalRequests": 1,
+          "totalErrors": 0,
+          "totalLatencyMs": 5045
+        },
+        "tokens": {
+          "input": 6754,
+          "prompt": 10437,
+          "candidates": 43,
+          "total": 10975,
+          "cached": 3683,
+          "thoughts": 495,
+          "tool": 0
+        },
+        "roles": {
+          "main": {
+            "totalRequests": 1,
+            "totalErrors": 0,
+            "totalLatencyMs": 5045,
+            "tokens": {
+              "input": 6754,
+              "prompt": 10437,
+              "candidates": 43,
+              "total": 10975,
+              "cached": 3683,
+              "thoughts": 495,
+              "tool": 0
+            }
+          }
+        }
+      }
+    },
+    "tools": {
+      "totalCalls": 0,
+      "totalSuccess": 0,
+      "totalFail": 0,
+      "totalDurationMs": 0,
+      "totalDecisions": {
+        "accept": 0,
+        "reject": 0,
+        "modify": 0,
+        "auto_accept": 0
+      },
+      "byName": {}
+    },
+    "files": {
+      "totalLinesAdded": 0,
+      "totalLinesRemoved": 0
+    }
+  }
+}
