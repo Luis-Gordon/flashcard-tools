@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "chrome-devtools-mcp@latest"]
+    },
+    "cloudflare": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@cloudflare/mcp-server-cloudflare", "run", "62d725833096d7aa1d6117360c1f0946"]
+    },
+    "github": {
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "@modelcontextprotocol/server-github"]
+    }
+  }
+}

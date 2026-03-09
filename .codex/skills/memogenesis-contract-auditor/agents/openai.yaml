@@ -1,0 +1,3 @@
+interface:
+  display_name: "Memogenesis Contract Auditor"
+  short_description: "Audit backend/Anki/web API and HTML contract consistency"

@@ -3,5 +3,6 @@ flashcard-backend/
 flashcard-anki/
 flashcard-web/
 
-# Claude Code
-.claude/
+# Plan review output (persisted for inspection, not committed)
+.claude/review-output/
+

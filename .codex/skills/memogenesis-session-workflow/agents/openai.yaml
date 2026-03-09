@@ -1,0 +1,3 @@
+interface:
+  display_name: "Memogenesis Session Workflow"
+  short_description: "Start, run, and close Memogenesis dev sessions consistently"

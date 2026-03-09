@@ -1,0 +1,3 @@
+interface:
+  display_name: "Memogenesis Doc Maintenance"
+  short_description: "Keep session logs, CLAUDE files, and architecture docs aligned"
