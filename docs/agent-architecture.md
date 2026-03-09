@@ -154,7 +154,7 @@ schemas, domain list, and content limits. Each area has a source of truth
 
 ```
 /plan-review {plan.md}  →  PowerShell runner (tools/plan-review/run-reviewers.ps1)
-                        →  launches Codex + Gemini jobs (5-min timeout each)
+                        →  launches Codex + Gemini in parallel (5-min timeout each)
                         →  Claude parses verdicts (fail-closed)
                         →  dedup + conflict detection  →  aggregate verdict
                         →  patch preview or human escalation  →  up to 3 iterations
@@ -199,14 +199,25 @@ candidates for permanent CLAUDE.md rules (lessons learned).
 
 **Runner details** (`tools/plan-review/run-reviewers.ps1`):
 
+- Uses `Start-Process` with `.cmd` wrappers (`codex.cmd`, `gemini.cmd`) instead of
+  `Start-Job`. On Windows, npm-installed CLIs are POSIX shell scripts that break
+  inside `Start-Job`'s background process — `.cmd` wrappers are native Win32
+  executables that work correctly with `Start-Process`.
+- Both reviewers run in parallel via non-blocking `Start-Process -PassThru`, then
+  `$proc.WaitForExit($timeout * 1000)` waits on each.
+- Stdin is provided via `-RedirectStandardInput` from temp files (pipeline piping
+  doesn't work with `Start-Process`).
+- Models: Codex uses `codex-5.3` (`-m codex-5.3`); Gemini uses `gemini-3.1-pro`
+  (`-m gemini-3.1-pro`).
+- Gemini uses `-p ""` for non-interactive mode (no `--approval-mode plan` — that
+  flag required an experimental setting and is unnecessary with `-p`).
 - All `Set-Content` calls use `-Encoding utf8` to prevent Windows default encoding
   from corrupting non-ASCII characters (e.g., Japanese text in language reviews).
-- Gemini's inner ScriptBlock writes its own error JSON on parse failure. The outer
-  error handler guards against overwriting this with a generic message — it only
-  writes a fallback if the output file doesn't exist or is empty.
 - Codex uses `--output-last-message FILE` (writes its own file); Gemini's output
   requires envelope unwrapping (`$envelope.response`) because the Gemini CLI
   returns a JSON wrapper around the actual response.
+- All temp files (prompts, stdout, stderr — 6 total) are cleaned up in a `finally`
+  block regardless of outcome.
 - The bash command that invokes the runner uses a 10-minute timeout (the script's
   internal per-reviewer timeout is 5 minutes).
 
