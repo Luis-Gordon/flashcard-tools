@@ -25,13 +25,26 @@ if (-not (Test-Path $OutputDir)) {
 
 $template = Get-Content -Path $templatePath -Raw
 
-$codexPrompt = $template.Replace('{{PLAN_FILE_PATH}}', $PlanFile).Replace('{{REVIEWER_ID}}', 'codex')
-$geminiPrompt = $template.Replace('{{PLAN_FILE_PATH}}', $PlanFile).Replace('{{REVIEWER_ID}}', 'gemini')
+# If the plan file is outside the project root, copy it into the project so
+# sandboxed reviewers (Gemini) can read it.
+$planFileForReview = $PlanFile
+if (-not $PlanFile.ToString().StartsWith($root)) {
+    $tempPlanDir = Join-Path $root "docs" "plans" ".review-input"
+    if (-not (Test-Path $tempPlanDir)) {
+        New-Item -ItemType Directory -Path $tempPlanDir -Force | Out-Null
+    }
+    $tempPlanFile = Join-Path $tempPlanDir (Split-Path -Leaf $PlanFile)
+    Copy-Item -Path $PlanFile -Destination $tempPlanFile -Force
+    $planFileForReview = Resolve-Path $tempPlanFile
+}
+
+$codexPrompt = $template.Replace('{{PLAN_FILE_PATH}}', $planFileForReview).Replace('{{REVIEWER_ID}}', 'codex')
+$geminiPrompt = $template.Replace('{{PLAN_FILE_PATH}}', $planFileForReview).Replace('{{REVIEWER_ID}}', 'gemini')
 
 $codexOutputFile = Join-Path $OutputDir "codex-verdict.json"
 $geminiOutputFile = Join-Path $OutputDir "gemini-verdict.json"
 
-$timeout = 300  # seconds
+$timeout = 600  # seconds
 
 function Write-ErrorVerdict {
     param([string]$Reviewer, [string]$Summary, [string]$OutputPath)
@@ -55,20 +68,15 @@ try {
     # --- Launch both reviewers in parallel ---
     Write-Host "Starting Codex and Gemini reviews in parallel..."
 
-    # Codex: use .cmd wrapper, redirect stdin from temp file
-    $codexProc = Start-Process -FilePath "codex.cmd" `
-        -ArgumentList "exec","-","-m","codex-5.3","--sandbox","read-only","--output-last-message",$codexOutputFile `
-        -RedirectStandardInput $codexPromptFile `
-        -RedirectStandardOutput $codexStdout `
-        -RedirectStandardError $codexStderr `
+    # Codex: use cmd /c with type pipe to avoid Start-Process stdin issues on Windows
+    $codexProc = Start-Process -FilePath "cmd.exe" `
+        -ArgumentList "/c","type","`"$codexPromptFile`"","|","codex.cmd","exec","-","-m","gpt-5.3-codex","--sandbox","read-only","--output-last-message","`"$codexOutputFile`"",">","`"$codexStdout`"","2>","`"$codexStderr`"" `
         -NoNewWindow -PassThru
 
-    # Gemini: use .cmd wrapper, -p "" for non-interactive, -m for better model
-    $geminiProc = Start-Process -FilePath "gemini.cmd" `
-        -ArgumentList "--output-format","json","-m","gemini-3.1-pro","-p","" `
-        -RedirectStandardInput $geminiPromptFile `
-        -RedirectStandardOutput $geminiStdout `
-        -RedirectStandardError $geminiStderr `
+    # Gemini: use cmd /c with type pipe to avoid Start-Process stdin issues
+    # -y (yolo) auto-approves tool calls so Gemini can read files without blocking
+    $geminiProc = Start-Process -FilePath "cmd.exe" `
+        -ArgumentList "/c","type","`"$geminiPromptFile`"","|","gemini.cmd","--output-format","json","-m","gemini-2.5-pro","-y","-p","""""",">","`"$geminiStdout`"","2>","`"$geminiStderr`"" `
         -NoNewWindow -PassThru
 
     # --- Wait for both with timeout ---
@@ -103,6 +111,12 @@ try {
             $envelope = $rawOutput | ConvertFrom-Json -ErrorAction Stop
             $content = $envelope.response
             if (-not $content) { throw "response field missing or empty" }
+            # Strip markdown fences if Gemini wraps JSON in ```json ... ```
+            $content = $content.Trim()
+            if ($content.StartsWith('```')) {
+                $content = $content -replace '(?s)^```\w*\r?\n(.*?)\r?\n```$', '$1'
+                $content = $content.Trim()
+            }
             $content | Set-Content $geminiOutputFile -Encoding utf8
             Write-Host "Gemini: DONE"
         } catch {
@@ -119,5 +133,10 @@ try {
     # Cleanup all temp files
     foreach ($f in @($codexPromptFile, $geminiPromptFile, $codexStdout, $codexStderr, $geminiStdout, $geminiStderr)) {
         if (Test-Path $f) { Remove-Item $f -Force -ErrorAction SilentlyContinue }
+    }
+    # Cleanup review-input temp copy if created
+    $reviewInputDir = Join-Path $root "docs" "plans" ".review-input"
+    if (Test-Path $reviewInputDir) {
+        Remove-Item $reviewInputDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

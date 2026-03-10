@@ -10,16 +10,11 @@ Unified backlog across all sub-projects, ordered by implementation priority. Sub
 
 High-impact, low-cost items that improve the core generation experience.
 
-- [ ] **Rejection visibility** (web) — Surface `rejected` and `unsuitable_content` arrays in `CardReview`. Backend already returns this data; the web app just needs to display it. Show rejected card fronts with rejection reasons in a collapsible section below accepted cards.
-  - Backend: no changes needed
-  - Web: `CardReview.tsx` UI addition
+- [x] **Rejection visibility** (web) — `QualityFilter` component in `CardReview.tsx` shows rejected + unsuitable cards in collapsible section. *(Done — Session 59)*
 
-- [ ] **Card count expectations** (web) — "Generated 8 of 10 (2 filtered by quality checks)" messaging in `CardReview` summary bar. Data already in response (`cards.length` vs `max_cards` + rejected count).
-  - Backend: no changes needed
-  - Web: `CardReview.tsx` messaging
+- [x] **Card count expectations** (web) — "Generated X of Y (Z filtered by quality checks)" messaging in `CardReview` summary bar. `lastMaxCards` tracked in cards store. *(Done — Session 62)*
 
-- [ ] **CardEditor notes field** (web) — Inline editor currently exposes front, back, and tags only. Notes are displayed but not editable. Add notes textarea to `CardEditor.tsx`.
-  - Web: `CardEditor.tsx`
+- [x] **CardEditor notes field** (web) — Notes textarea editable in `CardEditor.tsx`; `showNotes` prop passed from `CardReview` so notes field always appears during review. *(Done — Session 62)*
 
 ---
 
