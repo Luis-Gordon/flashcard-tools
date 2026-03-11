@@ -155,6 +155,8 @@ All card content uses structured HTML with `fc-` prefixed CSS classes — this i
 - **NEVER** modify cards without user confirmation (add-on)
 - **NEVER** make API calls during Anki sync
 - **NEVER** commit secrets — use `wrangler secret put` (backend)
+- **NEVER** use `git clean` — it permanently deletes untracked files that may contain important work (audit docs, plans, configs). Use `git checkout -- .` to revert tracked file changes only.
+- **NEVER** make code changes during a `/review` — reviews are read-only; report findings and stop.
 - **ALWAYS** validate input with Zod before processing (backend)
 - **ALWAYS** include `request_id` in every response (backend)
 - **ALWAYS** include `product_source` in every request (add-on)
