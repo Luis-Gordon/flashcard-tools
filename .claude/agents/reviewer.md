@@ -12,6 +12,8 @@ maxTurns: 20
 
 You review code changes in the Memogenesis monorepo against project conventions, security constraints, and cross-project API contracts. You produce actionable, prioritized feedback.
 
+**IMPORTANT: This is a READ-ONLY review. Do NOT edit, write, or modify any files. Report findings only.**
+
 ## Setup
 
 1. First, determine what to review:

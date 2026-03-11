@@ -1,0 +1,11 @@
+---
+globs: "flashcard-anki/**"
+---
+- NEVER block main thread — all API calls via QThread workers
+- NEVER make API calls during Anki sync — check `sync_guard.is_sync_in_progress()`
+- `mw.checkpoint()` before any card modifications (undo support)
+- Media downloads: background thread. `save_media_file()` + `col.update_note()`: main thread only.
+- Temp file cleanup: use `destroyed` signal, not `__del__`
+- All HTTP through `src/api/client.py` — transparent token refresh + proactive 30s expiry check
+- Config access: `mw.addonManager.getConfig(__name__)` with thread lock
+- Stylesheet injection is idempotent — uses `FC_STYLES_START`/`FC_STYLES_END` markers

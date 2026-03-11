@@ -46,7 +46,7 @@ Cross-project contract between backend (Cloudflare Workers), Anki add-on (Python
 
 | Operation | Backend timeout | Client timeout |
 |-----------|----------------|----------------|
-| Claude API (generate) | 60s | 60s |
+| Claude API (generate) | 60s | 90s |
 | Claude API (enhance) | 60s | 120s (multi-card) |
 | OpenAI TTS | 15s | 15s |
 | Unsplash image | 10s | 10s |

@@ -1,0 +1,11 @@
+---
+globs: "**/prompts/**,**/*-hook.ts,**/*-hook-*.ts"
+---
+- Hook-based architecture: master base + domain hook + optional sub-hook
+- Never edit prompts in-place — increment version
+- Route handlers import from registries (`getGenerationConfig()`, `getEnhancementConfig()`), not individual files
+- All card HTML uses `fc-*` CSS classes (see api-contract skill for full spec)
+- Furigana: `<ruby>kanji<rt>reading</rt></ruby>` — per-kanji, never hiragana/katakana/English
+- Never use inline styles in prompt output — all styling via CSS classes
+- Never invent new `fc-*` classes without updating anki `FC_STYLESHEET`
+- Sub-hooks use `metadataSchemaExtensions` — merged into parent's JSON Schema via deep-clone

@@ -1,0 +1,11 @@
+---
+globs: "flashcard-web/src/**/*.tsx,flashcard-web/src/**/*.ts"
+---
+- Zustand selectors MUST use `useShallow` — bare selectors cause infinite re-renders
+- List item components: `React.memo` + parent `useCallback`
+- Optimistic mutations: snapshot state before mutating, rollback in catch
+- DOMPurify for all card HTML rendering (SanitizedHTML component)
+- Tailwind-only — no CSS modules, no inline styles
+- SSR safety: `import.meta.env?.` and `typeof window !== "undefined"` guards
+- Supabase `onAuthStateChange`: capture unsubscribe handle, call before re-subscribing
+- React Router 7 library mode — explicit route definitions in App.tsx
