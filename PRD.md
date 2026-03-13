@@ -8,8 +8,6 @@ This document contains four PRDs for a suite of AI-powered flashcard tools shari
 >
 > **Style**: Completed phases get a brief summary of what was built. Incomplete phases keep full requirements and acceptance criteria.
 
-> **Current Status (2026-03-02)**: Backend Phases 1–7b complete (all 10 domains, 13 sub-hooks, billing, cards table, GDPR endpoints). Anki Add-on Phases 1–6 + 7c complete, 7d not started. Web App all phases complete (163/163 tests), staging deployed. Next: production deployment.
-
 ---
 
 # PRD 1: Flashcard Tools Backend
@@ -86,6 +84,28 @@ Enhancement prompts use a parallel hook system (`hooks/master-enhance-base.ts` +
 
 Monolithic prompt files (`generation/{domain}-v1.2.0.ts`, `enhancement/enhance-{domain}-v1.2.0.ts`) are preserved as reference — constants and few-shot examples are still imported by hooks.
 
+### Directive Mode
+
+When `content_type: 'prompt'`, the backend generates cards from expert knowledge based on a topic directive rather than extracting facts from source content. The content field contains the directive (e.g., "Common JLPT N2 grammar patterns" or "Key pharmacology drug interactions"). Behavioral differences from text/url/pdf mode:
+
+- No source document — `source_quote` is set to empty string for all cards
+- Uses `DIRECTIVE_FIDELITY_RULE` instead of `SOURCE_FIDELITY_RULE` (cards draw from established knowledge, not a specific source)
+- `user_guidance` is ignored (the directive content IS the guidance)
+- Minimum content length: 10 characters (same as text mode)
+- Supported across all 10 domains with per-domain user message formatting
+
+Client support: web app (toggle in GenerateForm), Anki add-on (not yet — see PRD 2 Planned Features).
+
+### Multi-Language Support
+
+The backend supports per-request language configuration via BCP-47 codes. Resolution chain for language context:
+
+1. **Per-request** `source_language` / `output_language` fields (highest priority)
+2. **Per-user** `user_language` preference stored in the `users` table (fallback)
+3. **Default** `'en'` (final fallback)
+
+For LANG domain: `source_language` determines the source/explanation language for bidirectional cards. For non-LANG domains: `detectContentLanguage()` identifies the content language and a language instruction is injected into the prompt when content or output language differs from English.
+
 ## Technical Specifications
 
 ### Tech Stack
@@ -118,6 +138,7 @@ interface User {
   overage_rate_cents: number;           // 0 (free), 2 (plus), 2 (pro)
   free_cards_used: number;              // Legacy — deprecated by subscription-aware usage counting
   free_cards_reset_at: string;          // Legacy — deprecated by subscription_period_start
+  user_language: string;                // BCP-47, default 'en' — fallback for source/output language
   created_at: string;
   updated_at: string;
 }
@@ -138,7 +159,7 @@ interface UsageRecord {
 interface GenerationRequest {
   id: string;                    // UUID
   user_id: string;               // FK to User
-  content_type: 'text' | 'url' | 'pdf';
+  content_type: 'text' | 'url' | 'pdf' | 'prompt';
   domain: string;                // Domain slug (e.g., 'lang', 'med')
   content_size_bytes: number;
   source_content_hash: string;   // SHA256 hash, not raw content
@@ -205,7 +226,7 @@ interface TTSCacheEntry {
 // Request
 {
   content: string;
-  content_type: 'text' | 'url' | 'pdf';
+  content_type: 'text' | 'url' | 'pdf' | 'prompt';
   domain: 'lang' | 'general' | 'med' | 'stem-m' | 'stem-cs' | 'fin' | 'law' | 'arts' | 'skill' | 'mem';
   product_source: 'anki_addon' | 'web_app' | 'browser_extension' | 'android_app' | 'api';
   options: {
@@ -215,7 +236,9 @@ interface TTSCacheEntry {
     include_context: boolean;
   };
   hook_key?: string;             // Sub-hook selector (e.g., 'ja', 'pharmacology')
-  user_guidance?: string;        // Free-text steering (max 500 chars, appended to prompt)
+  user_guidance?: string;        // Free-text steering (max 500 chars, appended to prompt). Ignored in directive mode.
+  source_language?: string;      // BCP-47 source content language (e.g., 'ja', 'en'). Falls back to user_language, then 'en'.
+  output_language?: string;      // BCP-47 output/explanation language. Falls back to user_language.
 }
 
 // Response (200)
@@ -521,7 +544,7 @@ The add-on consumes these backend endpoints:
 | `/auth/login` | POST | Initial authentication |
 | `/auth/refresh` | POST | Token renewal (transparent 401→refresh→retry + proactive 30s expiry check) |
 | `/auth/me` | GET | Verify auth status |
-| `/cards/generate` | POST | Generate cards from content (with `domain` parameter) |
+| `/cards/generate` | POST | Generate cards from content (domain, hook_key, user_guidance, source_language, output_language, content_type: prompt supported) |
 | `/cards/enhance` | POST | Enhance existing cards (with `domain` parameter) |
 | `/assets/tts` | POST | Individual TTS generation |
 | `/assets/tts/:cacheKey` | GET | Stream cached TTS audio (authenticated) |
@@ -606,6 +629,10 @@ Structured `fc-*` CSS output and Japanese furigana support. See root `CLAUDE.md`
 
 **Remaining acceptance criteria:**
 - [ ] Cards render correctly on AnkiDroid and AnkiMobile (untested on mobile)
+
+## Planned Features
+
+1. **Generation feature parity with web app** — Add `user_guidance` field, `source_language`/`output_language` fields, and directive mode (`content_type: 'prompt'`) to the Anki generation dialog. Feature parity between add-on and web app is a project goal.
 
 ---
 
@@ -818,6 +845,9 @@ Media URLs left as references for MVP — Anki fetches on first review. Media em
 - [x] Domain-specific metadata display, usage counter, extension handoff via URL params
 - [x] Error handling: USAGE_EXCEEDED → upgrade modal, RATE_LIMITED → toast, VALIDATION_ERROR → inline errors
 - [x] Usage counter refresh after generation (USAGE_CHANGED_EVENT custom DOM event)
+- [x] Directive mode (`content_type: 'prompt'`) with toggle in GenerateForm, user_guidance field, source/output language support
+
+Content types supported in web app: `text` and `prompt`. URL and PDF content types are backend-supported but not exposed in the web UI.
 
 ### Phase 3: Card Library & Management — ✅ COMPLETE
 
@@ -979,13 +1009,7 @@ Extension icon and branding, onboarding page (shown on install, explains the flo
 
 1. **Rejection visibility** — Surface rejected cards and unsuitable content reasons in client UIs so users understand why card count < max_cards. No API change needed (data already in response), clients need to display it. Affects: Anki add-on, web app (Phase 2).
 
-2. **User guidance / steering field** — Optional `user_guidance: string` field on POST /cards/generate. Passed as additional steering context to the prompt ("Focus on differential diagnosis" or "Only N2-level vocabulary"). Lightweight backend change (add to Zod schema, inject into prompt), high leverage for perceived quality. Affects: API contract, all clients.
-
-3. **Duplicate detection against existing cards** — Before generation, client sends existing card fronts (or hashes) from the target deck as context. Prompt skips concepts already covered. Increases token usage but prevents the highest-trust-destroying outcome: paying for cards you already have. Two implementation paths: (a) client sends existing cards in request body (new field), (b) server-side if cards table exists (web app can query, Anki add-on sends from local DB). Affects: API contract, Anki add-on, web app.
-
-4. **Target keywords / topics / goals** — Richer steering beyond free-text guidance. Structured fields: `target_keywords: string[]`, `learning_goals: string`, `exclude_topics: string[]`. Lower priority than free-text guidance — build that first, see if structured input adds value. Affects: API contract, all clients.
-
-5. **PRD format: feature-list-only** — Consider replacing the phase-based structure with a flat feature catalog (table of features × status × key specs) for each sub-project. Phases served their purpose during development but completed phases are now historical records. A feature list would be more scannable. Evaluate after the 2026-02-28 compression pass.
+2. **Duplicate detection against existing cards** — Before generation, client sends existing card fronts (or hashes) from the target deck as context. Prompt skips concepts already covered. Increases token usage but prevents the highest-trust-destroying outcome: paying for cards you already have. Two implementation paths: (a) client sends existing cards in request body (new field), (b) server-side if cards table exists (web app can query, Anki add-on sends from local DB). Affects: API contract, Anki add-on, web app.
 
 ---
 
