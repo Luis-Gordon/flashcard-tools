@@ -34,7 +34,7 @@ Use `tools/codex/check.ps1` when available.
 1. If checks fail, report exact failing step and stop.
 2. If checks pass, update docs:
   - Append `docs/session-log.md`.
-  - Update `CLAUDE.md` status/next tasks.
+  - Update `docs/backlog.md` — mark done items, add new items.
   - Update architecture doc only for structural changes.
 3. Summarize changed files, key behavior changes, and residual risks.
 

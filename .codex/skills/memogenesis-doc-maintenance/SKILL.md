@@ -1,6 +1,6 @@
 ---
 name: memogenesis-doc-maintenance
-description: Maintain Memogenesis living documentation after implementation work. Use when appending session logs, updating project CLAUDE status/next tasks, and keeping architecture docs aligned with real structural changes.
+description: Maintain Memogenesis living documentation after implementation work. Use when appending session logs, updating project backlogs, and keeping architecture docs aligned with real structural changes.
 ---
 
 # Memogenesis Doc Maintenance
@@ -21,9 +21,7 @@ Maintain docs with strict evidence from git and changed files.
   - Key decisions
   - Tests run and outcomes
   - Files changed
-3. Update relevant `CLAUDE.md`:
-  - Current status
-  - Next session tasks
+3. Update relevant `docs/backlog.md`: mark completed items done, add new items discovered.
 4. Update architecture doc only if structure changed:
   - new routes/services/middleware
   - data schema changes

@@ -41,11 +41,11 @@ Add a new entry following the exact format of existing entries. Key fields:
 - **Decisions**: Any architectural or design decisions made
 - **Test count**: If test files were modified, include updated test count
 
-### 4. Update CLAUDE.md status
+### 4. Update backlog
 
-In the affected sub-project's `CLAUDE.md`:
-- Update the "Current Status" line to reflect completed work
-- Update "Next Session Tasks" to reflect what comes next
+In the affected sub-project's `docs/backlog.md`:
+- Mark completed items as done or remove them
+- Add any new work items discovered during the session
 
 ### 5. Update architecture doc (only if structural changes)
 

@@ -25,9 +25,6 @@ Produce a concise summary (max 40 lines) with these sections:
 ```
 ## Session Context: {project(s)}
 
-### Current Status
-- {1-2 lines from CLAUDE.md "Current Status" per project}
-
 ### Recent Work
 - {3-5 bullet points from last 2 session log entries}
 

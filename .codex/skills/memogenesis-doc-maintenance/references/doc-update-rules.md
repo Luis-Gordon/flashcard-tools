@@ -2,13 +2,13 @@
 
 ## Files to Update
 - `flashcard-backend/docs/session-log.md`
-- `flashcard-backend/CLAUDE.md`
+- `flashcard-backend/docs/backlog.md`
 - `flashcard-backend/docs/architecture.md`
 - `flashcard-anki/docs/session-log.md`
-- `flashcard-anki/CLAUDE.md`
+- `flashcard-anki/docs/backlog.md`
 - `flashcard-anki/docs/architecture.md`
 - `flashcard-web/docs/session-log.md`
-- `flashcard-web/CLAUDE.md`
+- `flashcard-web/docs/backlog.md`
 - `flashcard-web/docs/architecture.md`
 
 ## Session Log Entry Requirements
@@ -20,9 +20,9 @@
   - commands/tests run
   - files changed
 
-## CLAUDE.md Update Requirements
-- Reflect newly completed work in "Current Status".
-- Adjust "Next Session Tasks" based on unfinished items.
+## Backlog Update Requirements
+- Mark completed items done or remove them from `docs/backlog.md`.
+- Add new work items discovered during the session.
 - Do not rewrite unrelated sections.
 
 ## Architecture Update Rule

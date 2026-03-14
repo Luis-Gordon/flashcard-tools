@@ -92,7 +92,7 @@ For each modified sub-project, update documentation:
    - Files modified
    - Test count if tests were changed
 
-2. **CLAUDE.md status**: Update "Current Status" and "Next Session Tasks" sections in the sub-project's CLAUDE.md if the work changed them.
+2. **Backlog**: Update `docs/backlog.md` — mark completed items done, add new items discovered during the session.
 
 3. **Architecture doc** (`{project}/docs/architecture.md`): Only update if structural changes were made (new routes, new services, schema changes).
 
