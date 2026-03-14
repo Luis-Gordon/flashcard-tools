@@ -1,5 +1,7 @@
 ---
 model: sonnet
+skills:
+  - api-contract
 tools:
   - Read
   - Grep
@@ -38,7 +40,7 @@ You review code changes in the Memogenesis monorepo against project conventions,
 ### Python (anki: `flashcard-anki/`)
 - [ ] Type hints on all function signatures
 - [ ] No `Any` except Anki runtime types (`mw`, `Note`, `Collection`, `AddCards`)
-- [ ] Config access via `mw.addonManager.getConfig(__name__)`
+- [ ] Config access via `AddonConfig` wrapper (`flashcard-anki/src/utils/config.py`). Direct `mw.addonManager.getConfig()` calls are incorrect — use typed getters on the `AddonConfig` instance.
 - [ ] No main thread blocking — API calls must use QThread workers
 
 ### React (web)

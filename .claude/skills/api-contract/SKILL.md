@@ -1,6 +1,6 @@
 ---
-user-invocable: false
-disable-model-invocation: true
+name: api-contract
+description: Cross-project API contract — error codes, required fields, content limits, timeouts, HTML contract, endpoints, and subscription tiers for the Memogenesis ecosystem
 ---
 
 # Memogenesis API Contract
@@ -13,6 +13,8 @@ Cross-project contract between backend (Cloudflare Workers), Anki add-on (Python
 |------|------|-----------------|-----------------|
 | `UNAUTHORIZED` | 401 | Return error | Anki: clear token → login dialog. Web: redirect to login. |
 | `USAGE_EXCEEDED` | 402 | Return error + limits + `reason` | Show upgrade message with usage details |
+| `FORBIDDEN` | 403 | Return error | Show permission error |
+| `NOT_FOUND` | 404 | Return error | Show not found message |
 | `RATE_LIMITED` | 429 | Return `retry_after` | Auto-retry (max 2, cap 60s), then show toast/message |
 | `CONFLICT` | 409 | Duplicate email signup | Show "account already exists" message |
 | `VALIDATION_ERROR` | 400 | Return field errors | Show user-friendly validation message |
@@ -39,6 +41,8 @@ Cross-project contract between backend (Cloudflare Workers), Anki add-on (Python
 | URL (fetched content) | 100KB after extraction | Truncate + warn |
 | PDF file | 10MB | 413 |
 | PDF extracted | 100KB | Truncate + warn |
+
+**Note**: `/cards/generate` has a 15MB body size override to accommodate base64-encoded PDFs (~13.8MB inside JSON). The 10MB PDF limit applies to all other routes. See `flashcard-backend/src/index.ts:41-44`.
 
 **Backend enforcement**: `flashcard-backend/src/middleware/contentSize.ts`
 

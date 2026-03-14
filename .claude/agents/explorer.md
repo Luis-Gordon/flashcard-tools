@@ -1,5 +1,7 @@
 ---
 model: haiku
+skills:
+  - api-contract
 tools:
   - Read
   - Grep

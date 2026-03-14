@@ -1,5 +1,6 @@
 ---
 model: haiku
+memory: project
 tools:
   - Read
   - Write
@@ -63,3 +64,12 @@ If no structural changes, skip this step entirely.
 - **Be concise** — session log entries should be informative but not verbose
 - **Never fabricate information** — only document what actually changed (verify via git)
 - **Preserve existing content** — only append to session logs, never delete
+
+## Memory
+
+Before starting, check your agent memory for conventions from previous sessions.
+
+After completing updates, record:
+- Session log format quirks specific to each sub-project
+- Backlog conventions (done marker style, priority ordering)
+- Architecture doc sections that are frequently stale
